@@ -17,6 +17,7 @@ import (
 
 const (
 	bpNone       = 0
+	bpTernary    = 5  // ?:
 	bpOr         = 10 // ||
 	bpAnd        = 20 // &&
 	bpEquality   = 30 // == !=
@@ -30,6 +31,8 @@ const (
 // infixBP returns the left binding power for an infix/postfix operator.
 func infixBP(kind token.Kind) int {
 	switch kind {
+	case token.QUESTION:
+		return bpTernary
 	case token.OR:
 		return bpOr
 	case token.AND:
@@ -167,7 +170,8 @@ func (p *Parser) synchronize() {
 		}
 		// Stop at statement-starting keywords
 		if p.match(token.KW_IF, token.KW_WHILE, token.KW_FOR, token.KW_FUNCTION, token.KW_CLASS,
-			token.KW_VAR, token.KW_CONST, token.KW_RETURN, token.KW_BREAK, token.KW_CONTINUE) {
+			token.KW_VAR, token.KW_CONST, token.KW_RETURN, token.KW_BREAK, token.KW_CONTINUE,
+			token.KW_TRY, token.KW_THROW) {
 			return
 		}
 		p.advance()
@@ -209,6 +213,12 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return p.parseContinueStmt()
 	case token.KW_VAR, token.KW_CONST:
 		return p.parseVarDecl()
+	case token.KW_TRY:
+		return p.parseTryStmt()
+	case token.KW_THROW:
+		return p.parseThrowStmt()
+	case token.LBRACE:
+		return p.parseBlock()
 	default:
 		return p.parseSimpleStmt()
 	}
@@ -431,6 +441,15 @@ func (p *Parser) parseClassDecl() *ast.ClassDecl {
 	}
 	decl.Name = nameTok.Lexeme
 
+	// Optional: extends SuperClass
+	if p.check(token.KW_EXTENDS) {
+		p.advance()
+		superTok, ok := p.expect(token.IDENT)
+		if ok {
+			decl.SuperClass = superTok.Lexeme
+		}
+	}
+
 	if _, ok := p.expect(token.LBRACE); !ok {
 		p.synchronize()
 		decl.Span = p.makeSpan(start.Span.Start)
@@ -512,6 +531,11 @@ func (p *Parser) parseExpr(minBP int) ast.Expr {
 		return nil
 	}
 
+	// Check for single-param arrow function: ident => body
+	if ident, ok := left.(*ast.IdentExpr); ok && p.check(token.ARROW) {
+		return p.parseArrowBody(left.GetSpan().Start, []string{ident.Name})
+	}
+
 	for {
 		kind := p.peekKind()
 		bp := infixBP(kind)
@@ -585,7 +609,17 @@ func (p *Parser) nud() ast.Expr {
 			Name:     tok.Lexeme,
 		}
 
+	case token.KW_SUPER:
+		p.advance()
+		return &ast.SuperExpr{
+			ExprBase: makeExprBase(tok.Span.Start, tok.Span.End),
+		}
+
 	case token.LPAREN:
+		// Check for arrow function: (params) => body
+		if p.isArrowFunction() {
+			return p.parseArrowFromParen()
+		}
 		// Grouped expression: ( expr )
 		p.advance() // consume '('
 		p.skipNewlines()
@@ -593,6 +627,10 @@ func (p *Parser) nud() ast.Expr {
 		p.skipNewlines()
 		p.expect(token.RPAREN)
 		return expr
+
+	case token.LBRACE:
+		// Map literal: { key: val, ... }
+		return p.parseMapLiteral()
 
 	case token.BANG:
 		// Unary: !expr
@@ -635,6 +673,22 @@ func (p *Parser) led(left ast.Expr) ast.Expr {
 	tok := p.peek()
 
 	switch tok.Kind {
+	case token.QUESTION:
+		// Ternary: left ? then : else
+		p.advance() // consume '?'
+		p.skipNewlines()
+		thenExpr := p.parseExpr(bpNone)
+		p.skipNewlines()
+		p.expect(token.COLON)
+		p.skipNewlines()
+		elseExpr := p.parseExpr(bpNone)
+		return &ast.TernaryExpr{
+			ExprBase:  makeExprBase(left.GetSpan().Start, elseExpr.GetSpan().End),
+			Condition: left,
+			Then:      thenExpr,
+			Else:      elseExpr,
+		}
+
 	case token.PLUS, token.MINUS, token.STAR, token.SLASH, token.PERCENT,
 		token.EQ, token.NEQ, token.LT, token.LTE, token.GT, token.GTE,
 		token.AND, token.OR:
@@ -861,6 +915,186 @@ func (p *Parser) parseArrayLiteral() *ast.ArrayLiteral {
 	return &ast.ArrayLiteral{
 		ExprBase: makeExprBase(start.Span.Start, end.Span.End),
 		Elements: elements,
+	}
+}
+
+// ============================================================
+// Arrow function parsing
+// ============================================================
+
+// isArrowFunction does lookahead to detect (params) => pattern.
+func (p *Parser) isArrowFunction() bool {
+	i := p.pos
+	if i >= len(p.tokens) || p.tokens[i].Kind != token.LPAREN {
+		return false
+	}
+	i++ // skip '('
+
+	// Skip IDENT, COMMA pairs (and newlines)
+	for i < len(p.tokens) && p.tokens[i].Kind != token.RPAREN {
+		if p.tokens[i].Kind == token.NEWLINE {
+			i++
+			continue
+		}
+		if p.tokens[i].Kind != token.IDENT {
+			return false
+		}
+		i++
+		if i < len(p.tokens) && p.tokens[i].Kind == token.COMMA {
+			i++
+		}
+	}
+
+	if i >= len(p.tokens) || p.tokens[i].Kind != token.RPAREN {
+		return false
+	}
+	i++ // skip ')'
+
+	// Skip newlines
+	for i < len(p.tokens) && p.tokens[i].Kind == token.NEWLINE {
+		i++
+	}
+
+	return i < len(p.tokens) && p.tokens[i].Kind == token.ARROW
+}
+
+// parseArrowFromParen parses: (params) => body
+func (p *Parser) parseArrowFromParen() *ast.FuncExpr {
+	start := p.peek()
+	params := p.parseParamList()
+	return p.parseArrowBody(start.Span.Start, params)
+}
+
+// parseArrowBody parses: => body (expression or block)
+func (p *Parser) parseArrowBody(start span.Position, params []string) *ast.FuncExpr {
+	p.advance() // consume '=>'
+	p.skipNewlines()
+
+	var body *ast.BlockStmt
+	if p.check(token.LBRACE) {
+		body = p.parseBlock()
+	} else {
+		// Expression body: wrap in implicit return
+		expr := p.parseExpr(bpNone)
+		retStmt := &ast.ReturnStmt{
+			StmtBase: makeStmtBase(expr.GetSpan().Start, expr.GetSpan().End),
+			Value:    expr,
+		}
+		body = &ast.BlockStmt{
+			StmtBase: makeStmtBase(expr.GetSpan().Start, expr.GetSpan().End),
+			Stmts:    []ast.Node{retStmt},
+		}
+	}
+
+	return &ast.FuncExpr{
+		ExprBase: makeExprBase(start, p.prevEnd()),
+		Params:   params,
+		Body:     body,
+	}
+}
+
+// ============================================================
+// Map literal parsing
+// ============================================================
+
+// parseMapLiteral parses: { key: val, key: val, ... }
+func (p *Parser) parseMapLiteral() *ast.MapLiteral {
+	start := p.advance() // consume '{'
+	var keys []ast.Expr
+	var values []ast.Expr
+
+	p.skipNewlines()
+	if !p.check(token.RBRACE) {
+		k, v := p.parseMapEntry()
+		keys = append(keys, k)
+		values = append(values, v)
+		for p.check(token.COMMA) {
+			p.advance()
+			p.skipNewlines()
+			if p.check(token.RBRACE) {
+				break // trailing comma
+			}
+			k, v = p.parseMapEntry()
+			keys = append(keys, k)
+			values = append(values, v)
+		}
+	}
+	p.skipNewlines()
+	end, _ := p.expect(token.RBRACE)
+
+	return &ast.MapLiteral{
+		ExprBase: makeExprBase(start.Span.Start, end.Span.End),
+		Keys:     keys,
+		Values:   values,
+	}
+}
+
+func (p *Parser) parseMapEntry() (ast.Expr, ast.Expr) {
+	p.skipNewlines()
+	var key ast.Expr
+
+	if p.check(token.STRING) {
+		tok := p.advance()
+		key = &ast.StringLiteral{
+			ExprBase: makeExprBase(tok.Span.Start, tok.Span.End),
+			Value:    tok.Lexeme,
+		}
+	} else if p.check(token.IDENT) {
+		tok := p.advance()
+		// Treat identifier as string key
+		key = &ast.StringLiteral{
+			ExprBase: makeExprBase(tok.Span.Start, tok.Span.End),
+			Value:    tok.Lexeme,
+		}
+	} else {
+		tok := p.peek()
+		p.error("E2004", tok.Span, fmt.Sprintf("expected map key (string or identifier), got '%s'", tok.Lexeme))
+		p.synchronize()
+		key = &ast.StringLiteral{ExprBase: makeExprBase(tok.Span.Start, tok.Span.End), Value: ""}
+	}
+
+	p.expect(token.COLON)
+	p.skipNewlines()
+	val := p.parseExpr(bpNone)
+
+	return key, val
+}
+
+// ============================================================
+// Try / Catch / Throw parsing
+// ============================================================
+
+// parseTryStmt parses: try { ... } catch (e) { ... }
+func (p *Parser) parseTryStmt() *ast.TryStmt {
+	start := p.advance() // consume 'try'
+	stmt := &ast.TryStmt{}
+
+	stmt.Body = p.parseBlock()
+
+	// Optional catch
+	p.skipNewlines()
+	if p.check(token.KW_CATCH) {
+		p.advance() // consume 'catch'
+		if p.check(token.LPAREN) {
+			p.advance()
+			nameTok, _ := p.expect(token.IDENT)
+			stmt.CatchParam = nameTok.Lexeme
+			p.expect(token.RPAREN)
+		}
+		stmt.CatchBody = p.parseBlock()
+	}
+
+	stmt.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+	return stmt
+}
+
+// parseThrowStmt parses: throw expr
+func (p *Parser) parseThrowStmt() *ast.ThrowStmt {
+	start := p.advance() // consume 'throw'
+	expr := p.parseExpr(bpNone)
+	return &ast.ThrowStmt{
+		StmtBase: makeStmtBase(start.Span.Start, p.prevEnd()),
+		Value:    expr,
 	}
 }
 

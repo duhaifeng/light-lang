@@ -58,6 +58,17 @@ func NodeToMap(node Node) map[string]interface{} {
 		return m("ArrayLiteral", n.Span, "elements", exprSlice(n.Elements))
 	case *FuncExpr:
 		return m("FuncExpr", n.Span, "name", n.Name, "params", n.Params, "body", NodeToMap(n.Body))
+	case *TernaryExpr:
+		return m("TernaryExpr", n.Span,
+			"condition", NodeToMap(n.Condition),
+			"then", NodeToMap(n.Then),
+			"else", NodeToMap(n.Else))
+	case *MapLiteral:
+		return m("MapLiteral", n.Span,
+			"keys", exprSlice(n.Keys),
+			"values", exprSlice(n.Values))
+	case *SuperExpr:
+		return m("SuperExpr", n.Span)
 
 	// ---- Statements ----
 	case *ExprStmt:
@@ -125,6 +136,15 @@ func NodeToMap(node Node) map[string]interface{} {
 			"varName", n.VarName,
 			"iterable", NodeToMap(n.Iterable),
 			"body", NodeToMap(n.Body))
+	case *TryStmt:
+		result := m("TryStmt", n.Span, "body", NodeToMap(n.Body))
+		if n.CatchBody != nil {
+			result["catchParam"] = n.CatchParam
+			result["catchBody"] = NodeToMap(n.CatchBody)
+		}
+		return result
+	case *ThrowStmt:
+		return m("ThrowStmt", n.Span, "value", NodeToMap(n.Value))
 
 	// ---- Declarations ----
 	case *FuncDecl:
@@ -134,6 +154,9 @@ func NodeToMap(node Node) map[string]interface{} {
 			"body", NodeToMap(n.Body))
 	case *ClassDecl:
 		result := m("ClassDecl", n.Span, "name", n.Name)
+		if n.SuperClass != "" {
+			result["superClass"] = n.SuperClass
+		}
 		if n.Constructor != nil {
 			result["constructor"] = map[string]interface{}{
 				"kind":   "ConstructorDecl",

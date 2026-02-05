@@ -54,6 +54,8 @@ func RegisterBuiltins(env *Environment, w io.Writer) {
 				return IntVal(len(string(v))), nil
 			case *ArrayVal:
 				return IntVal(len(v.Elements)), nil
+			case *MapVal:
+				return IntVal(len(v.Keys)), nil
 			default:
 				return nil, fmt.Errorf("len() not supported for type '%s'", args[0].TypeName())
 			}
@@ -91,6 +93,42 @@ func RegisterBuiltins(env *Environment, w io.Writer) {
 			last := arr.Elements[len(arr.Elements)-1]
 			arr.Elements = arr.Elements[:len(arr.Elements)-1]
 			return last, nil
+		},
+	}, true)
+
+	env.Define("keys", &BuiltinVal{
+		Name: "keys",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("keys() expects 1 argument, got %d", len(args))
+			}
+			m, ok := args[0].(*MapVal)
+			if !ok {
+				return nil, fmt.Errorf("keys() expects a map argument, got '%s'", args[0].TypeName())
+			}
+			elements := make([]Value, len(m.Keys))
+			for i, k := range m.Keys {
+				elements[i] = StringVal(k)
+			}
+			return &ArrayVal{Elements: elements}, nil
+		},
+	}, true)
+
+	env.Define("values", &BuiltinVal{
+		Name: "values",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("values() expects 1 argument, got %d", len(args))
+			}
+			m, ok := args[0].(*MapVal)
+			if !ok {
+				return nil, fmt.Errorf("values() expects a map argument, got '%s'", args[0].TypeName())
+			}
+			elements := make([]Value, len(m.Keys))
+			for i, k := range m.Keys {
+				elements[i] = m.Values[k]
+			}
+			return &ArrayVal{Elements: elements}, nil
 		},
 	}, true)
 }

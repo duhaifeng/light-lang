@@ -46,6 +46,10 @@ const (
 	STAR_ASSIGN  // *=
 	SLASH_ASSIGN // /=
 
+	// Misc operators
+	QUESTION // ?
+	ARROW    // =>
+
 	// Delimiters
 	LPAREN    // (
 	RPAREN    // )
@@ -76,6 +80,11 @@ const (
 	KW_TRUE
 	KW_FALSE
 	KW_NULL
+	KW_TRY
+	KW_CATCH
+	KW_THROW
+	KW_EXTENDS
+	KW_SUPER
 	KW_OF
 )
 
@@ -108,6 +117,8 @@ var kindNames = map[Kind]string{
 	MINUS_ASSIGN: "-=",
 	STAR_ASSIGN:  "*=",
 	SLASH_ASSIGN: "/=",
+	QUESTION:     "?",
+	ARROW:        "=>",
 
 	LPAREN:    "(",
 	RPAREN:    ")",
@@ -137,6 +148,11 @@ var kindNames = map[Kind]string{
 	KW_TRUE:        "true",
 	KW_FALSE:       "false",
 	KW_NULL:        "null",
+	KW_TRY:         "try",
+	KW_CATCH:       "catch",
+	KW_THROW:       "throw",
+	KW_EXTENDS:     "extends",
+	KW_SUPER:       "super",
 	KW_OF:          "of",
 }
 
@@ -176,6 +192,11 @@ var keywords = map[string]Kind{
 	"true":        KW_TRUE,
 	"false":       KW_FALSE,
 	"null":        KW_NULL,
+	"try":         KW_TRY,
+	"catch":       KW_CATCH,
+	"throw":       KW_THROW,
+	"extends":     KW_EXTENDS,
+	"super":       KW_SUPER,
 	"of":          KW_OF,
 }
 

@@ -304,10 +304,16 @@ func (l *Lexer) readOperator(start span.Position) token.Token {
 			return token.Token{Kind: token.NEQ, Lexeme: "!=", Span: l.makeSpan(start)}
 		}
 		return token.Token{Kind: token.BANG, Lexeme: "!", Span: l.makeSpan(start)}
+	case '?':
+		return token.Token{Kind: token.QUESTION, Lexeme: "?", Span: l.makeSpan(start)}
 	case '=':
 		if l.peek() == '=' {
 			l.advance()
 			return token.Token{Kind: token.EQ, Lexeme: "==", Span: l.makeSpan(start)}
+		}
+		if l.peek() == '>' {
+			l.advance()
+			return token.Token{Kind: token.ARROW, Lexeme: "=>", Span: l.makeSpan(start)}
 		}
 		return token.Token{Kind: token.ASSIGN, Lexeme: "=", Span: l.makeSpan(start)}
 	case '<':

@@ -74,8 +74,9 @@ func (v *BuiltinVal) String() string   { return fmt.Sprintf("<builtin %s>", v.Na
 
 // ClassVal represents a class definition stored in the environment.
 type ClassVal struct {
-	Decl *ast.ClassDecl
-	Env  *Environment // environment where the class was defined
+	Decl  *ast.ClassDecl
+	Env   *Environment // environment where the class was defined
+	Super *ClassVal    // parent class (for extends), may be nil
 }
 
 func (v *ClassVal) TypeName() string { return "class" }
@@ -110,6 +111,28 @@ func (v *ArrayVal) String() string {
 		}
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// ---- Map value ----
+
+// MapVal represents a map (dictionary) value with ordered keys.
+type MapVal struct {
+	Keys   []string
+	Values map[string]Value
+}
+
+func (v *MapVal) TypeName() string { return "map" }
+func (v *MapVal) String() string {
+	parts := make([]string, len(v.Keys))
+	for i, k := range v.Keys {
+		val := v.Values[k]
+		if s, ok := val.(StringVal); ok {
+			parts[i] = fmt.Sprintf("\"%s\": \"%s\"", k, string(s))
+		} else {
+			parts[i] = fmt.Sprintf("\"%s\": %s", k, val.String())
+		}
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }
 
 // ---- Truthiness ----

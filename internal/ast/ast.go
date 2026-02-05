@@ -153,12 +153,32 @@ type ArrayLiteral struct {
 	Elements []Expr
 }
 
-// FuncExpr represents a function expression: function(params) { body } or function name(params) { body }.
+// FuncExpr represents a function expression: function(params) { body } or (x) => expr.
 type FuncExpr struct {
 	ExprBase
-	Name   string // may be empty for anonymous functions
+	Name   string // may be empty for anonymous / arrow functions
 	Params []string
 	Body   *BlockStmt
+}
+
+// TernaryExpr represents a ternary: cond ? then : else.
+type TernaryExpr struct {
+	ExprBase
+	Condition Expr
+	Then      Expr
+	Else      Expr
+}
+
+// MapLiteral represents a map literal: { key: val, ... }.
+type MapLiteral struct {
+	ExprBase
+	Keys   []Expr // StringLiteral (identifier keys are converted to strings)
+	Values []Expr
+}
+
+// SuperExpr represents the 'super' keyword.
+type SuperExpr struct {
+	ExprBase
 }
 
 // ============================================================
@@ -248,6 +268,20 @@ type ForOfStmt struct {
 	Body     *BlockStmt
 }
 
+// TryStmt represents a try/catch block.
+type TryStmt struct {
+	StmtBase
+	Body       *BlockStmt
+	CatchParam string     // variable name in catch(e), may be empty
+	CatchBody  *BlockStmt // may be nil if no catch
+}
+
+// ThrowStmt represents a throw statement.
+type ThrowStmt struct {
+	StmtBase
+	Value Expr
+}
+
 // ============================================================
 // Declarations (also implement Stmt for top-level use)
 // ============================================================
@@ -264,6 +298,7 @@ type FuncDecl struct {
 type ClassDecl struct {
 	StmtBase
 	Name        string
+	SuperClass  string // may be empty if no extends
 	Constructor *ConstructorDecl // may be nil
 	Methods     []*MethodDecl
 }

@@ -1,0 +1,47 @@
+value: 42
+pi is 3.14
+flag: true
+nothing: null
+100 dollars
+big
+big
+7
+7
+36
+Hello, World!
+3.14159
+12
+12
+Alice
+30
+5
+5
+0
+host=localhost
+port=8080
+42
+42
+caught: oops
+error: division by zero
+5
+caught: division by zero
+no error
+inner caught: inner
+outer caught: rethrown
+caught number: 42
+caught array: [1, 2, 3]
+Rex barks
+Rex is a Labrador
+Animal(Rex)
+Tiny yips
+Tiny is a mixed
+Animal(Tiny)
+I am a circle
+78.53975
+Hello from Base and Child
+[2, 4, 6, 8, 10]
+["small", "small", "small", "big", "big"]
+4
+null
+[9, 25, 49]
+["negative: -1", "negative: -2"]

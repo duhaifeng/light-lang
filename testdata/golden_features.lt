@@ -1,0 +1,305 @@
+// ============================================================
+// 1. 字符串 + 数字自动拼接
+// ============================================================
+print("value: " + 42)
+print("pi is " + 3.14)
+print("flag: " + true)
+print("nothing: " + null)
+print(100 + " dollars")
+
+// ============================================================
+// 2. 三元运算符
+// ============================================================
+var x = 5
+print(x > 3 ? "big" : "small")
+print(x > 10 ? "huge" : x > 3 ? "big" : "small")
+var abs = -7
+abs = abs < 0 ? -abs : abs
+print(abs)
+
+// ============================================================
+// 3. 箭头函数
+// ============================================================
+
+// 多参数 + 表达式体
+var add = (a, b) => a + b
+print(add(3, 4))
+
+// 单参数 + 表达式体（无括号）
+var square = x => x * x
+print(square(6))
+
+// 块体 + return
+var greet = (name) => {
+  return "Hello, " + name + "!"
+}
+print(greet("World"))
+
+// 无参数
+var getPI = () => 3.14159
+print(getPI())
+
+// 高阶函数 + 箭头
+function applyTwice(fn, val) {
+  return fn(fn(val))
+}
+print(applyTwice(x => x + 1, 10))
+print(applyTwice(x => x * 2, 3))
+
+// ============================================================
+// 4. Map / 字典
+// ============================================================
+var person = {
+  name: "Alice",
+  age: 30,
+  active: true,
+}
+print(person["name"])
+print(person.age)
+
+// 修改
+person["score"] = 95
+person.role = "admin"
+print(len(person))
+
+// keys / values
+var ks = keys(person)
+print(len(ks))
+
+// 空 map
+var empty = {}
+print(len(empty))
+
+// for-of 遍历 map（遍历 keys）
+var config = { host: "localhost", port: "8080" }
+for (var key of config) {
+  print(key + "=" + config[key])
+}
+
+// 嵌套 map
+var nested = { a: { b: { c: 42 } } }
+print(nested["a"]["b"]["c"])
+print(nested.a.b.c)
+
+// ============================================================
+// 5. try / catch / throw
+// ============================================================
+
+// 基本 throw + catch
+try {
+  throw "oops"
+} catch (e) {
+  print("caught: " + e)
+}
+
+// 捕获运行时错误
+try {
+  var y = 1 / 0
+} catch (e) {
+  print("error: " + e)
+}
+
+// 函数中 throw
+function safeDivide(a, b) {
+  if (b == 0) {
+    throw "division by zero"
+  }
+  return a / b
+}
+
+try {
+  print(safeDivide(10, 2))
+  print(safeDivide(10, 0))
+} catch (e) {
+  print("caught: " + e)
+}
+
+// try 中正常执行（无异常）
+try {
+  print("no error")
+} catch (e) {
+  print("should not reach")
+}
+
+// 嵌套 try/catch
+try {
+  try {
+    throw "inner"
+  } catch (e) {
+    print("inner caught: " + e)
+    throw "rethrown"
+  }
+} catch (e) {
+  print("outer caught: " + e)
+}
+
+// throw 非字符串值
+try {
+  throw 42
+} catch (e) {
+  print("caught number: " + e)
+}
+
+try {
+  throw [1, 2, 3]
+} catch (e) {
+  print("caught array: " + e)
+}
+
+// ============================================================
+// 6. 类继承 (extends + super)
+// ============================================================
+
+class Animal {
+  constructor(name) {
+    this.name = name
+  }
+
+  speak() {
+    return this.name + " makes a sound"
+  }
+
+  toString() {
+    return "Animal(" + this.name + ")"
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name)
+    this.breed = breed
+  }
+
+  speak() {
+    return this.name + " barks"
+  }
+
+  info() {
+    return this.name + " is a " + this.breed
+  }
+}
+
+class Puppy extends Dog {
+  constructor(name) {
+    super(name, "mixed")
+  }
+
+  speak() {
+    return this.name + " yips"
+  }
+}
+
+var dog = new Dog("Rex", "Labrador")
+print(dog.speak())
+print(dog.info())
+print(dog.toString())
+
+var pup = new Puppy("Tiny")
+print(pup.speak())
+print(pup.info())
+print(pup.toString())
+
+// 无 constructor 的子类（继承父类 constructor）
+class Shape {
+  constructor(type) {
+    this.type = type
+  }
+  describe() {
+    return "I am a " + this.type
+  }
+}
+
+class Circle extends Shape {
+  area(r) {
+    return 3.14159 * r * r
+  }
+}
+
+var c = new Circle("circle")
+print(c.describe())
+print(c.area(5))
+
+// super.method() 调用
+class Base {
+  greet() {
+    return "Hello from Base"
+  }
+}
+
+class Child extends Base {
+  greet() {
+    var base = super.greet()
+    return base + " and Child"
+  }
+}
+
+var ch = new Child()
+print(ch.greet())
+
+// ============================================================
+// 7. 综合: 所有特性组合使用
+// ============================================================
+
+class Collection {
+  constructor() {
+    this.items = []
+  }
+
+  add(item) {
+    this.items.push(item)
+    return this
+  }
+
+  map(fn) {
+    var result = []
+    for (var item of this.items) {
+      result.push(fn(item))
+    }
+    return result
+  }
+
+  find(fn) {
+    for (var item of this.items) {
+      if (fn(item)) {
+        return item
+      }
+    }
+    return null
+  }
+}
+
+var col = new Collection()
+col.add(1).add(2).add(3).add(4).add(5)
+
+// 箭头函数 + 方法调用
+var doubled = col.map(x => x * 2)
+print(doubled)
+
+// 三元 + 箭头
+var labels = col.map(x => x > 3 ? "big" : "small")
+print(labels)
+
+// find + 箭头
+var found = col.find(x => x > 3)
+print(found)
+var notFound = col.find(x => x > 100)
+print(notFound)
+
+// try/catch 保护
+function processItem(item) {
+  if (item < 0) { throw "negative: " + item }
+  return item * item
+}
+
+var results = []
+var errors = []
+var inputs = [3, -1, 5, -2, 7]
+for (var val of inputs) {
+  try {
+    results.push(processItem(val))
+  } catch (e) {
+    errors.push(e)
+  }
+}
+print(results)
+print(errors)

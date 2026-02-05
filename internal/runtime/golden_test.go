@@ -73,3 +73,7 @@ func TestGoldenFor(t *testing.T) {
 func TestGoldenComplex(t *testing.T) {
 	goldenTest(t, "golden_complex")
 }
+
+func TestGoldenFeatures(t *testing.T) {
+	goldenTest(t, "golden_features")
+}

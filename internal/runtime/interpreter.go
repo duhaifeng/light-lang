@@ -48,6 +48,16 @@ func runtimeErr(s span.Span, format string, args ...interface{}) *RuntimeError {
 	return &RuntimeError{Message: fmt.Sprintf(format, args...), Span: s}
 }
 
+// ThrownError represents a user-thrown error (via throw statement).
+type ThrownError struct {
+	Value Value
+	Span  span.Span
+}
+
+func (e *ThrownError) Error() string {
+	return fmt.Sprintf("uncaught throw at %d:%d: %s", e.Span.Start.Line, e.Span.Start.Column, e.Value.String())
+}
+
 // ============================================================
 // Interpreter
 // ============================================================
@@ -157,6 +167,12 @@ func (i *Interpreter) execStmt(stmt ast.Stmt) (ExecResult, error) {
 	case *ast.ForOfStmt:
 		return i.execForOf(s)
 
+	case *ast.TryStmt:
+		return i.execTry(s)
+
+	case *ast.ThrowStmt:
+		return i.execThrow(s)
+
 	case *ast.BlockStmt:
 		return i.execBlock(s, NewEnvironment(i.env))
 
@@ -202,11 +218,18 @@ func (i *Interpreter) execAssign(s *ast.AssignStmt) (ExecResult, error) {
 		if err != nil {
 			return resultNone, err
 		}
-		objVal, ok := obj.(*ObjectVal)
-		if !ok {
-			return resultNone, runtimeErr(s.GetSpan(), "cannot set property on non-object value of type '%s'", obj.TypeName())
+		switch o := obj.(type) {
+		case *ObjectVal:
+			o.Props[target.Property] = val
+		case *MapVal:
+			key := target.Property
+			if _, exists := o.Values[key]; !exists {
+				o.Keys = append(o.Keys, key)
+			}
+			o.Values[key] = val
+		default:
+			return resultNone, runtimeErr(s.GetSpan(), "cannot set property on value of type '%s'", obj.TypeName())
 		}
-		objVal.Props[target.Property] = val
 	case *ast.IndexExpr:
 		obj, err := i.evalExpr(target.Object)
 		if err != nil {
@@ -226,6 +249,16 @@ func (i *Interpreter) execAssign(s *ast.AssignStmt) (ExecResult, error) {
 				return resultNone, runtimeErr(s.GetSpan(), "array index %d out of range (length %d)", idxInt, len(o.Elements))
 			}
 			o.Elements[idxInt] = val
+		case *MapVal:
+			keyStr, ok := idx.(StringVal)
+			if !ok {
+				return resultNone, runtimeErr(s.GetSpan(), "map key must be a string, got '%s'", idx.TypeName())
+			}
+			key := string(keyStr)
+			if _, exists := o.Values[key]; !exists {
+				o.Keys = append(o.Keys, key)
+			}
+			o.Values[key] = val
 		default:
 			return resultNone, runtimeErr(s.GetSpan(), "cannot index-assign value of type '%s'", obj.TypeName())
 		}
@@ -319,6 +352,20 @@ func (i *Interpreter) execFuncDecl(s *ast.FuncDecl) (ExecResult, error) {
 
 func (i *Interpreter) execClassDecl(s *ast.ClassDecl) (ExecResult, error) {
 	cls := &ClassVal{Decl: s, Env: i.env}
+
+	// Resolve super class if extends is specified
+	if s.SuperClass != "" {
+		superVal, ok := i.env.Get(s.SuperClass)
+		if !ok {
+			return resultNone, runtimeErr(s.GetSpan(), "undefined class '%s'", s.SuperClass)
+		}
+		superCls, ok := superVal.(*ClassVal)
+		if !ok {
+			return resultNone, runtimeErr(s.GetSpan(), "'%s' is not a class", s.SuperClass)
+		}
+		cls.Super = superCls
+	}
+
 	if err := i.env.Define(s.Name, cls, false); err != nil {
 		return resultNone, runtimeErr(s.GetSpan(), "%s", err)
 	}
@@ -361,6 +408,12 @@ func (i *Interpreter) evalExpr(expr ast.Expr) (Value, error) {
 		return i.evalArrayLiteral(e)
 	case *ast.FuncExpr:
 		return i.evalFuncExpr(e)
+	case *ast.TernaryExpr:
+		return i.evalTernary(e)
+	case *ast.MapLiteral:
+		return i.evalMapLiteral(e)
+	case *ast.SuperExpr:
+		return nil, runtimeErr(e.GetSpan(), "super can only be used as super() or super.method()")
 	default:
 		return nil, runtimeErr(expr.GetSpan(), "unhandled expression type: %T", expr)
 	}
@@ -420,12 +473,12 @@ func (i *Interpreter) evalBinary(e *ast.BinaryExpr) (Value, error) {
 		return nil, err
 	}
 
-	// String concatenation
+	// String concatenation (auto-convert if one side is string)
 	if e.Op == token.PLUS {
-		if ls, ok := left.(StringVal); ok {
-			if rs, ok := right.(StringVal); ok {
-				return StringVal(string(ls) + string(rs)), nil
-			}
+		_, leftIsStr := left.(StringVal)
+		_, rightIsStr := right.(StringVal)
+		if leftIsStr || rightIsStr {
+			return StringVal(left.String() + right.String()), nil
 		}
 	}
 
@@ -523,6 +576,16 @@ func (i *Interpreter) evalCall(e *ast.CallExpr) (Value, error) {
 		args[idx] = val
 	}
 
+	// Check for super() or super.method() calls
+	if _, isSuper := e.Callee.(*ast.SuperExpr); isSuper {
+		return i.callSuperConstructor(args, e.GetSpan())
+	}
+	if member, ok := e.Callee.(*ast.MemberExpr); ok {
+		if _, isSuper := member.Object.(*ast.SuperExpr); isSuper {
+			return i.callSuperMethod(member.Property, args, e.GetSpan())
+		}
+	}
+
 	// Check for method call: obj.method(args)
 	if member, ok := e.Callee.(*ast.MemberExpr); ok {
 		obj, err := i.evalExpr(member.Object)
@@ -583,31 +646,29 @@ func (i *Interpreter) callFunc(fn *FuncVal, args []Value, s span.Span) (Value, e
 }
 
 func (i *Interpreter) callMethod(obj *ObjectVal, methodName string, args []Value, s span.Span) (Value, error) {
-	// Look up method in class declaration
-	cls := obj.Class.Decl
-
-	for _, m := range cls.Methods {
-		if m.Name == methodName {
-			if len(args) != len(m.Params) {
-				return nil, runtimeErr(s, "%s.%s() expects %d arguments, got %d",
-					cls.Name, methodName, len(m.Params), len(args))
-			}
-
-			methodEnv := NewEnvironment(obj.Class.Env)
-			methodEnv.Define("this", obj, true)
-			for idx, param := range m.Params {
-				methodEnv.Define(param, args[idx], false)
-			}
-
-			result, err := i.execBlock(m.Body, methodEnv)
-			if err != nil {
-				return nil, err
-			}
-			if result.Signal == SigReturn {
-				return result.Value, nil
-			}
-			return NullVal{}, nil
+	// Walk the prototype chain to find the method
+	method, methodClass := findMethod(obj.Class, methodName)
+	if method != nil {
+		if len(args) != len(method.Params) {
+			return nil, runtimeErr(s, "%s.%s() expects %d arguments, got %d",
+				obj.Class.Decl.Name, methodName, len(method.Params), len(args))
 		}
+
+		methodEnv := NewEnvironment(methodClass.Env)
+		methodEnv.Define("this", obj, true)
+		methodEnv.Define("__class__", methodClass, true)
+		for idx, param := range method.Params {
+			methodEnv.Define(param, args[idx], false)
+		}
+
+		result, err := i.execBlock(method.Body, methodEnv)
+		if err != nil {
+			return nil, err
+		}
+		if result.Signal == SigReturn {
+			return result.Value, nil
+		}
+		return NullVal{}, nil
 	}
 
 	// Check if it's a property that's callable
@@ -615,7 +676,31 @@ func (i *Interpreter) callMethod(obj *ObjectVal, methodName string, args []Value
 		return i.callValue(propVal, args, s)
 	}
 
-	return nil, runtimeErr(s, "undefined method '%s' on class '%s'", methodName, cls.Name)
+	return nil, runtimeErr(s, "undefined method '%s' on class '%s'", methodName, obj.Class.Decl.Name)
+}
+
+// findMethod walks the class inheritance chain to find a method.
+func findMethod(cls *ClassVal, name string) (*ast.MethodDecl, *ClassVal) {
+	for cls != nil {
+		for _, m := range cls.Decl.Methods {
+			if m.Name == name {
+				return m, cls
+			}
+		}
+		cls = cls.Super
+	}
+	return nil, nil
+}
+
+// findConstructor walks the chain to find the nearest constructor.
+func findConstructor(cls *ClassVal) (*ast.ConstructorDecl, *ClassVal) {
+	for cls != nil {
+		if cls.Decl.Constructor != nil {
+			return cls.Decl.Constructor, cls
+		}
+		cls = cls.Super
+	}
+	return nil, nil
 }
 
 func (i *Interpreter) evalMember(e *ast.MemberExpr) (Value, error) {
@@ -635,6 +720,11 @@ func (i *Interpreter) evalMember(e *ast.MemberExpr) (Value, error) {
 			return IntVal(len(o.Elements)), nil
 		}
 		return nil, runtimeErr(e.GetSpan(), "array has no property '%s'", e.Property)
+	case *MapVal:
+		if val, exists := o.Values[e.Property]; exists {
+			return val, nil
+		}
+		return NullVal{}, nil
 	case StringVal:
 		if e.Property == "length" {
 			return IntVal(len(string(o))), nil
@@ -676,6 +766,15 @@ func (i *Interpreter) evalIndex(e *ast.IndexExpr) (Value, error) {
 			return nil, runtimeErr(e.GetSpan(), "array index %d out of range (length %d)", idxInt, len(o.Elements))
 		}
 		return o.Elements[idxInt], nil
+	case *MapVal:
+		keyStr, ok := idx.(StringVal)
+		if !ok {
+			return nil, runtimeErr(e.GetSpan(), "map key must be a string, got '%s'", idx.TypeName())
+		}
+		if val, exists := o.Values[string(keyStr)]; exists {
+			return val, nil
+		}
+		return NullVal{}, nil
 	default:
 		return nil, runtimeErr(e.GetSpan(), "cannot index value of type '%s'", obj.TypeName())
 	}
@@ -708,15 +807,16 @@ func (i *Interpreter) evalNew(e *ast.NewExpr) (Value, error) {
 		Props: make(map[string]Value),
 	}
 
-	// Run constructor if defined
-	ctor := cls.Decl.Constructor
+	// Find constructor (walk inheritance chain)
+	ctor, ctorClass := findConstructor(cls)
 	if ctor != nil {
 		if len(args) != len(ctor.Params) {
 			return nil, runtimeErr(e.GetSpan(), "%s constructor expects %d arguments, got %d",
 				e.ClassName, len(ctor.Params), len(args))
 		}
-		ctorEnv := NewEnvironment(cls.Env)
+		ctorEnv := NewEnvironment(ctorClass.Env)
 		ctorEnv.Define("this", obj, true)
+		ctorEnv.Define("__class__", ctorClass, true)
 		for idx, param := range ctor.Params {
 			ctorEnv.Define(param, args[idx], false)
 		}
@@ -801,12 +901,20 @@ func (i *Interpreter) execForOf(s *ast.ForOfStmt) (ExecResult, error) {
 		return resultNone, err
 	}
 
-	arr, ok := iterable.(*ArrayVal)
-	if !ok {
-		return resultNone, runtimeErr(s.GetSpan(), "for-of requires an array, got '%s'", iterable.TypeName())
+	var items []Value
+	switch it := iterable.(type) {
+	case *ArrayVal:
+		items = it.Elements
+	case *MapVal:
+		items = make([]Value, len(it.Keys))
+		for idx, k := range it.Keys {
+			items[idx] = StringVal(k)
+		}
+	default:
+		return resultNone, runtimeErr(s.GetSpan(), "for-of requires an array or map, got '%s'", iterable.TypeName())
 	}
 
-	for _, elem := range arr.Elements {
+	for _, elem := range items {
 		loopEnv := NewEnvironment(i.env)
 		loopEnv.Define(s.VarName, elem, false)
 
@@ -840,6 +948,146 @@ func (i *Interpreter) evalArrayLiteral(e *ast.ArrayLiteral) (Value, error) {
 		elements[idx] = val
 	}
 	return &ArrayVal{Elements: elements}, nil
+}
+
+func (i *Interpreter) evalTernary(e *ast.TernaryExpr) (Value, error) {
+	cond, err := i.evalExpr(e.Condition)
+	if err != nil {
+		return nil, err
+	}
+	if IsTruthy(cond) {
+		return i.evalExpr(e.Then)
+	}
+	return i.evalExpr(e.Else)
+}
+
+func (i *Interpreter) evalMapLiteral(e *ast.MapLiteral) (Value, error) {
+	m := &MapVal{
+		Keys:   make([]string, 0, len(e.Keys)),
+		Values: make(map[string]Value, len(e.Keys)),
+	}
+	for idx, keyExpr := range e.Keys {
+		keyStr, ok := keyExpr.(*ast.StringLiteral)
+		if !ok {
+			return nil, runtimeErr(keyExpr.GetSpan(), "map key must be a string")
+		}
+		key := keyStr.Value
+		val, err := i.evalExpr(e.Values[idx])
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := m.Values[key]; !exists {
+			m.Keys = append(m.Keys, key)
+		}
+		m.Values[key] = val
+	}
+	return m, nil
+}
+
+func (i *Interpreter) execTry(s *ast.TryStmt) (ExecResult, error) {
+	result, err := i.execBlock(s.Body, NewEnvironment(i.env))
+	if err == nil {
+		return result, nil
+	}
+
+	// Error occurred - catch it
+	if s.CatchBody != nil {
+		catchEnv := NewEnvironment(i.env)
+		var errVal Value
+		switch e := err.(type) {
+		case *ThrownError:
+			errVal = e.Value
+		case *RuntimeError:
+			errVal = StringVal(e.Message)
+		default:
+			errVal = StringVal(err.Error())
+		}
+		if s.CatchParam != "" {
+			catchEnv.Define(s.CatchParam, errVal, false)
+		}
+		return i.execBlock(s.CatchBody, catchEnv)
+	}
+
+	return resultNone, err // re-throw if no catch
+}
+
+func (i *Interpreter) execThrow(s *ast.ThrowStmt) (ExecResult, error) {
+	val, err := i.evalExpr(s.Value)
+	if err != nil {
+		return resultNone, err
+	}
+	return resultNone, &ThrownError{Value: val, Span: s.GetSpan()}
+}
+
+func (i *Interpreter) callSuperConstructor(args []Value, s span.Span) (Value, error) {
+	classVal, ok := i.env.Get("__class__")
+	if !ok {
+		return nil, runtimeErr(s, "super() used outside of a constructor")
+	}
+	cls := classVal.(*ClassVal)
+	if cls.Super == nil {
+		return nil, runtimeErr(s, "class '%s' has no super class", cls.Decl.Name)
+	}
+
+	ctor, ctorClass := findConstructor(cls.Super)
+	if ctor == nil {
+		if len(args) > 0 {
+			return nil, runtimeErr(s, "super class has no constructor but was called with %d arguments", len(args))
+		}
+		return NullVal{}, nil
+	}
+	if len(args) != len(ctor.Params) {
+		return nil, runtimeErr(s, "super constructor expects %d arguments, got %d", len(ctor.Params), len(args))
+	}
+
+	thisVal, _ := i.env.Get("this")
+	ctorEnv := NewEnvironment(ctorClass.Env)
+	ctorEnv.Define("this", thisVal, true)
+	ctorEnv.Define("__class__", ctorClass, true)
+	for idx, param := range ctor.Params {
+		ctorEnv.Define(param, args[idx], false)
+	}
+
+	_, err := i.execBlock(ctor.Body, ctorEnv)
+	return NullVal{}, err
+}
+
+func (i *Interpreter) callSuperMethod(methodName string, args []Value, s span.Span) (Value, error) {
+	classVal, ok := i.env.Get("__class__")
+	if !ok {
+		return nil, runtimeErr(s, "super used outside of a class")
+	}
+	cls := classVal.(*ClassVal)
+	if cls.Super == nil {
+		return nil, runtimeErr(s, "class has no super class")
+	}
+
+	thisVal, _ := i.env.Get("this")
+	obj := thisVal.(*ObjectVal)
+
+	method, methodClass := findMethod(cls.Super, methodName)
+	if method == nil {
+		return nil, runtimeErr(s, "super class has no method '%s'", methodName)
+	}
+	if len(args) != len(method.Params) {
+		return nil, runtimeErr(s, "super.%s() expects %d arguments, got %d", methodName, len(method.Params), len(args))
+	}
+
+	methodEnv := NewEnvironment(methodClass.Env)
+	methodEnv.Define("this", obj, true)
+	methodEnv.Define("__class__", methodClass, true)
+	for idx, param := range method.Params {
+		methodEnv.Define(param, args[idx], false)
+	}
+
+	result, err := i.execBlock(method.Body, methodEnv)
+	if err != nil {
+		return nil, err
+	}
+	if result.Signal == SigReturn {
+		return result.Value, nil
+	}
+	return NullVal{}, nil
 }
 
 func (i *Interpreter) evalFuncExpr(e *ast.FuncExpr) (Value, error) {
