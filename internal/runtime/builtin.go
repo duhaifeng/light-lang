@@ -52,9 +52,45 @@ func RegisterBuiltins(env *Environment, w io.Writer) {
 			switch v := args[0].(type) {
 			case StringVal:
 				return IntVal(len(string(v))), nil
+			case *ArrayVal:
+				return IntVal(len(v.Elements)), nil
 			default:
 				return nil, fmt.Errorf("len() not supported for type '%s'", args[0].TypeName())
 			}
+		},
+	}, true)
+
+	env.Define("push", &BuiltinVal{
+		Name: "push",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) != 2 {
+				return nil, fmt.Errorf("push() expects 2 arguments, got %d", len(args))
+			}
+			arr, ok := args[0].(*ArrayVal)
+			if !ok {
+				return nil, fmt.Errorf("push() first argument must be an array, got '%s'", args[0].TypeName())
+			}
+			arr.Elements = append(arr.Elements, args[1])
+			return IntVal(len(arr.Elements)), nil
+		},
+	}, true)
+
+	env.Define("pop", &BuiltinVal{
+		Name: "pop",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("pop() expects 1 argument, got %d", len(args))
+			}
+			arr, ok := args[0].(*ArrayVal)
+			if !ok {
+				return nil, fmt.Errorf("pop() first argument must be an array, got '%s'", args[0].TypeName())
+			}
+			if len(arr.Elements) == 0 {
+				return nil, fmt.Errorf("pop() on empty array")
+			}
+			last := arr.Elements[len(arr.Elements)-1]
+			arr.Elements = arr.Elements[:len(arr.Elements)-1]
+			return last, nil
 		},
 	}, true)
 }

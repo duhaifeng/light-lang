@@ -166,7 +166,7 @@ func (p *Parser) synchronize() {
 			return
 		}
 		// Stop at statement-starting keywords
-		if p.match(token.KW_IF, token.KW_WHILE, token.KW_FUNCTION, token.KW_CLASS,
+		if p.match(token.KW_IF, token.KW_WHILE, token.KW_FOR, token.KW_FUNCTION, token.KW_CLASS,
 			token.KW_VAR, token.KW_CONST, token.KW_RETURN, token.KW_BREAK, token.KW_CONTINUE) {
 			return
 		}
@@ -199,6 +199,8 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return p.parseIfStmt()
 	case token.KW_WHILE:
 		return p.parseWhileStmt()
+	case token.KW_FOR:
+		return p.parseForStmt()
 	case token.KW_RETURN:
 		return p.parseReturnStmt()
 	case token.KW_BREAK:
@@ -336,6 +338,25 @@ func (p *Parser) parseSimpleStmt() ast.Stmt {
 	if p.check(token.ASSIGN) {
 		p.advance()
 		value := p.parseExpr(bpNone)
+		return &ast.AssignStmt{
+			StmtBase: makeStmtBase(expr.GetSpan().Start, p.prevEnd()),
+			Target:   expr,
+			Value:    value,
+		}
+	}
+
+	// Check for compound assignment: expr += / -= / *= / /= value
+	if p.match(token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN) {
+		opTok := p.advance()
+		rhs := p.parseExpr(bpNone)
+		// Desugar: target op= rhs → target = target op rhs
+		binOp := compoundToOp(opTok.Kind)
+		value := &ast.BinaryExpr{
+			ExprBase: makeExprBase(expr.GetSpan().Start, rhs.GetSpan().End),
+			Op:       binOp,
+			Left:     expr,
+			Right:    rhs,
+		}
 		return &ast.AssignStmt{
 			StmtBase: makeStmtBase(expr.GetSpan().Start, p.prevEnd()),
 			Target:   expr,
@@ -598,6 +619,12 @@ func (p *Parser) nud() ast.Expr {
 	case token.KW_NEW:
 		return p.parseNewExpr()
 
+	case token.KW_FUNCTION:
+		return p.parseFuncExpr()
+
+	case token.LBRACKET:
+		return p.parseArrayLiteral()
+
 	default:
 		return nil
 	}
@@ -710,6 +737,146 @@ func (p *Parser) parseNewExpr() *ast.NewExpr {
 		ExprBase:  makeExprBase(start.Span.Start, p.prevEnd()),
 		ClassName: nameTok.Lexeme,
 		Args:      args,
+	}
+}
+
+// ============================================================
+// For loop parsing
+// ============================================================
+
+// parseForStmt dispatches between C-style for and for-of.
+func (p *Parser) parseForStmt() ast.Stmt {
+	start := p.advance() // consume 'for'
+
+	if _, ok := p.expect(token.LPAREN); !ok {
+		p.synchronize()
+		return &ast.ExprStmt{StmtBase: makeStmtBase(start.Span.Start, p.prevEnd())}
+	}
+
+	p.skipNewlines()
+
+	// Detect for-of: for (var IDENT of expr)
+	if p.check(token.KW_VAR) && p.pos+2 < len(p.tokens) &&
+		p.tokens[p.pos+1].Kind == token.IDENT &&
+		p.tokens[p.pos+2].Kind == token.KW_OF {
+		return p.parseForOfBody(start)
+	}
+
+	// C-style for loop: for (init; cond; update)
+	return p.parseCStyleFor(start)
+}
+
+// parseForOfBody parses the rest of: for ( var IDENT of expr ) block
+func (p *Parser) parseForOfBody(start token.Token) *ast.ForOfStmt {
+	p.advance() // consume 'var'
+	nameTok := p.advance() // consume IDENT
+	p.advance() // consume 'of'
+	p.skipNewlines()
+
+	iterable := p.parseExpr(bpNone)
+
+	p.skipNewlines()
+	p.expect(token.RPAREN)
+
+	body := p.parseBlock()
+
+	return &ast.ForOfStmt{
+		StmtBase: makeStmtBase(start.Span.Start, p.prevEnd()),
+		VarName:  nameTok.Lexeme,
+		Iterable: iterable,
+		Body:     body,
+	}
+}
+
+// parseCStyleFor parses: for ( [init]; [cond]; [update] ) block
+func (p *Parser) parseCStyleFor(start token.Token) *ast.ForStmt {
+	stmt := &ast.ForStmt{}
+
+	// Init (optional)
+	p.skipNewlines()
+	if !p.check(token.SEMICOLON) {
+		if p.match(token.KW_VAR, token.KW_CONST) {
+			stmt.Init = p.parseVarDecl()
+		} else {
+			stmt.Init = p.parseSimpleStmt()
+		}
+	}
+	p.expect(token.SEMICOLON)
+
+	// Condition (optional)
+	p.skipNewlines()
+	if !p.check(token.SEMICOLON) {
+		stmt.Condition = p.parseExpr(bpNone)
+	}
+	p.expect(token.SEMICOLON)
+
+	// Update (optional)
+	p.skipNewlines()
+	if !p.check(token.RPAREN) {
+		stmt.Update = p.parseSimpleStmt()
+	}
+	p.expect(token.RPAREN)
+
+	stmt.Body = p.parseBlock()
+	stmt.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+	return stmt
+}
+
+// parseFuncExpr parses: function [name] ( params ) block
+func (p *Parser) parseFuncExpr() *ast.FuncExpr {
+	start := p.advance() // consume 'function'
+	expr := &ast.FuncExpr{}
+
+	// Optional name
+	if p.check(token.IDENT) {
+		expr.Name = p.advance().Lexeme
+	}
+
+	expr.Params = p.parseParamList()
+	expr.Body = p.parseBlock()
+	expr.ExprBase = makeExprBase(start.Span.Start, p.prevEnd())
+	return expr
+}
+
+// parseArrayLiteral parses: [ expr, expr, ... ]
+func (p *Parser) parseArrayLiteral() *ast.ArrayLiteral {
+	start := p.advance() // consume '['
+	var elements []ast.Expr
+
+	p.skipNewlines()
+	if !p.check(token.RBRACKET) {
+		elements = append(elements, p.parseExpr(bpNone))
+		for p.check(token.COMMA) {
+			p.advance() // consume ','
+			p.skipNewlines()
+			if p.check(token.RBRACKET) {
+				break // trailing comma
+			}
+			elements = append(elements, p.parseExpr(bpNone))
+		}
+	}
+	p.skipNewlines()
+	end, _ := p.expect(token.RBRACKET)
+
+	return &ast.ArrayLiteral{
+		ExprBase: makeExprBase(start.Span.Start, end.Span.End),
+		Elements: elements,
+	}
+}
+
+// compoundToOp maps compound assignment token to binary operator.
+func compoundToOp(kind token.Kind) token.Kind {
+	switch kind {
+	case token.PLUS_ASSIGN:
+		return token.PLUS
+	case token.MINUS_ASSIGN:
+		return token.MINUS
+	case token.STAR_ASSIGN:
+		return token.STAR
+	case token.SLASH_ASSIGN:
+		return token.SLASH
+	default:
+		return token.PLUS
 	}
 }
 

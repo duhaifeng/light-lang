@@ -54,6 +54,10 @@ func NodeToMap(node Node) map[string]interface{} {
 		return m("NewExpr", n.Span,
 			"className", n.ClassName,
 			"args", exprSlice(n.Args))
+	case *ArrayLiteral:
+		return m("ArrayLiteral", n.Span, "elements", exprSlice(n.Elements))
+	case *FuncExpr:
+		return m("FuncExpr", n.Span, "name", n.Name, "params", n.Params, "body", NodeToMap(n.Body))
 
 	// ---- Statements ----
 	case *ExprStmt:
@@ -103,6 +107,23 @@ func NodeToMap(node Node) map[string]interface{} {
 	case *WhileStmt:
 		return m("WhileStmt", n.Span,
 			"condition", NodeToMap(n.Condition),
+			"body", NodeToMap(n.Body))
+	case *ForStmt:
+		result := m("ForStmt", n.Span, "body", NodeToMap(n.Body))
+		if n.Init != nil {
+			result["init"] = NodeToMap(n.Init)
+		}
+		if n.Condition != nil {
+			result["condition"] = NodeToMap(n.Condition)
+		}
+		if n.Update != nil {
+			result["update"] = NodeToMap(n.Update)
+		}
+		return result
+	case *ForOfStmt:
+		return m("ForOfStmt", n.Span,
+			"varName", n.VarName,
+			"iterable", NodeToMap(n.Iterable),
 			"body", NodeToMap(n.Body))
 
 	// ---- Declarations ----

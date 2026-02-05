@@ -1,0 +1,239 @@
+// ============================================================
+// 综合测试 1: 冒泡排序
+// ============================================================
+
+function bubbleSort(arr) {
+  var n = arr.length
+  for (var i = 0; i < n - 1; i += 1) {
+    for (var j = 0; j < n - i - 1; j += 1) {
+      if (arr[j] > arr[j + 1]) {
+        var temp = arr[j]
+        arr[j] = arr[j + 1]
+        arr[j + 1] = temp
+      }
+    }
+  }
+  return arr
+}
+
+var data = [5, 3, 8, 1, 9, 2, 7, 4, 6]
+bubbleSort(data)
+print(data)
+
+// ============================================================
+// 综合测试 2: Stack 类（类 + 数组字段）
+// ============================================================
+
+class Stack {
+  constructor() {
+    this.items = []
+  }
+
+  push(item) {
+    this.items.push(item)
+  }
+
+  pop() {
+    return this.items.pop()
+  }
+
+  peek() {
+    return this.items[this.items.length - 1]
+  }
+
+  size() {
+    return this.items.length
+  }
+
+  isEmpty() {
+    return this.items.length == 0
+  }
+
+  toArray() {
+    return this.items
+  }
+}
+
+var s = new Stack()
+print(s.isEmpty())
+s.push(10)
+s.push(20)
+s.push(30)
+print(s.size())
+print(s.peek())
+print(s.pop())
+print(s.pop())
+print(s.size())
+print(s.isEmpty())
+print(s.toArray())
+
+// ============================================================
+// 综合测试 3: 高阶函数（map / filter / reduce）
+// ============================================================
+
+function map(arr, fn) {
+  var result = []
+  for (var item of arr) {
+    result.push(fn(item))
+  }
+  return result
+}
+
+function filter(arr, fn) {
+  var result = []
+  for (var item of arr) {
+    if (fn(item)) {
+      result.push(item)
+    }
+  }
+  return result
+}
+
+function reduce(arr, fn, initial) {
+  var acc = initial
+  for (var item of arr) {
+    acc = fn(acc, item)
+  }
+  return acc
+}
+
+var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+// map: 每个元素乘以 2
+var doubled = map(nums, function double(x) { return x * 2 })
+print(doubled)
+
+// filter: 只保留偶数
+var evens = filter(nums, function isEven(x) { return x % 2 == 0 })
+print(evens)
+
+// reduce: 求总和
+var total = reduce(nums, function add(a, b) { return a + b }, 0)
+print(total)
+
+// 组合使用: 偶数的平方和
+var evenSquareSum = reduce(
+  map(
+    filter(nums, function isEven2(x) { return x % 2 == 0 }),
+    function square(x) { return x * x }
+  ),
+  function add2(a, b) { return a + b },
+  0
+)
+print(evenSquareSum)
+
+// ============================================================
+// 综合测试 4: 闭包计数器
+// ============================================================
+
+function makeCounter(start) {
+  var count = start
+  function increment() {
+    count += 1
+    return count
+  }
+  return increment
+}
+
+var counter = makeCounter(0)
+print(counter())
+print(counter())
+print(counter())
+
+var counter2 = makeCounter(100)
+print(counter2())
+print(counter())
+
+// ============================================================
+// 综合测试 5: 递归斐波那契 + 迭代斐波那契
+// ============================================================
+
+function fibRec(n) {
+  if (n <= 1) {
+    return n
+  }
+  return fibRec(n - 1) + fibRec(n - 2)
+}
+
+function fibIter(n) {
+  if (n <= 1) { return n }
+  var a = 0
+  var b = 1
+  for (var i = 2; i <= n; i += 1) {
+    var temp = a + b
+    a = b
+    b = temp
+  }
+  return b
+}
+
+// 前 10 个斐波那契数
+var fibs = []
+for (var i = 0; i < 10; i += 1) {
+  fibs.push(fibRec(i))
+}
+print(fibs)
+
+// 迭代版本求第 20 个
+print(fibIter(20))
+
+// ============================================================
+// 综合测试 6: 矩阵操作
+// ============================================================
+
+function createMatrix(rows, cols, val) {
+  var m = []
+  for (var i = 0; i < rows; i += 1) {
+    var row = []
+    for (var j = 0; j < cols; j += 1) {
+      row.push(val)
+    }
+    m.push(row)
+  }
+  return m
+}
+
+function setDiagonal(m, val) {
+  var n = m.length
+  for (var i = 0; i < n; i += 1) {
+    m[i][i] = val
+  }
+}
+
+var matrix = createMatrix(3, 3, 0)
+setDiagonal(matrix, 1)
+print(matrix[0])
+print(matrix[1])
+print(matrix[2])
+
+// ============================================================
+// 综合测试 7: 链式类方法
+// ============================================================
+
+class Builder {
+  constructor() {
+    this.parts = []
+  }
+
+  add(part) {
+    this.parts.push(part)
+    return this
+  }
+
+  build() {
+    var result = ""
+    for (var i = 0; i < this.parts.length; i += 1) {
+      if (i > 0) {
+        result = result + ", "
+      }
+      result = result + this.parts[i]
+    }
+    return result
+  }
+}
+
+var b = new Builder()
+b.add("Hello")
+b.add("World")
+b.add("!")
+print(b.build())

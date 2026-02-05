@@ -40,6 +40,12 @@ const (
 	AND // &&
 	OR  // ||
 
+	// Compound assignment
+	PLUS_ASSIGN  // +=
+	MINUS_ASSIGN // -=
+	STAR_ASSIGN  // *=
+	SLASH_ASSIGN // /=
+
 	// Delimiters
 	LPAREN    // (
 	RPAREN    // )
@@ -56,6 +62,7 @@ const (
 	KW_IF
 	KW_ELSE
 	KW_WHILE
+	KW_FOR
 	KW_FUNCTION
 	KW_RETURN
 	KW_BREAK
@@ -69,6 +76,7 @@ const (
 	KW_TRUE
 	KW_FALSE
 	KW_NULL
+	KW_OF
 )
 
 var kindNames = map[Kind]string{
@@ -94,8 +102,12 @@ var kindNames = map[Kind]string{
 	LTE:     "<=",
 	GT:      ">",
 	GTE:     ">=",
-	AND:     "&&",
-	OR:      "||",
+	AND:          "&&",
+	OR:           "||",
+	PLUS_ASSIGN:  "+=",
+	MINUS_ASSIGN: "-=",
+	STAR_ASSIGN:  "*=",
+	SLASH_ASSIGN: "/=",
 
 	LPAREN:    "(",
 	RPAREN:    ")",
@@ -111,6 +123,7 @@ var kindNames = map[Kind]string{
 	KW_IF:          "if",
 	KW_ELSE:        "else",
 	KW_WHILE:       "while",
+	KW_FOR:         "for",
 	KW_FUNCTION:    "function",
 	KW_RETURN:      "return",
 	KW_BREAK:       "break",
@@ -124,6 +137,7 @@ var kindNames = map[Kind]string{
 	KW_TRUE:        "true",
 	KW_FALSE:       "false",
 	KW_NULL:        "null",
+	KW_OF:          "of",
 }
 
 // String returns the human-readable name for a token kind.
@@ -136,7 +150,7 @@ func (k Kind) String() string {
 
 // IsKeyword returns true if the kind is a keyword.
 func (k Kind) IsKeyword() bool {
-	return k >= KW_IF && k <= KW_NULL
+	return k >= KW_IF && k <= KW_OF
 }
 
 // IsLiteral returns true if the kind is a literal (ident/int/float/string).
@@ -148,6 +162,7 @@ var keywords = map[string]Kind{
 	"if":          KW_IF,
 	"else":        KW_ELSE,
 	"while":       KW_WHILE,
+	"for":         KW_FOR,
 	"function":    KW_FUNCTION,
 	"return":      KW_RETURN,
 	"break":       KW_BREAK,
@@ -161,6 +176,7 @@ var keywords = map[string]Kind{
 	"true":        KW_TRUE,
 	"false":       KW_FALSE,
 	"null":        KW_NULL,
+	"of":          KW_OF,
 }
 
 // LookupIdent returns the keyword Kind for ident, or IDENT if it is not a keyword.

@@ -273,12 +273,28 @@ func (l *Lexer) readOperator(start span.Position) token.Token {
 	case ':':
 		return token.Token{Kind: token.COLON, Lexeme: ":", Span: l.makeSpan(start)}
 	case '+':
+		if l.peek() == '=' {
+			l.advance()
+			return token.Token{Kind: token.PLUS_ASSIGN, Lexeme: "+=", Span: l.makeSpan(start)}
+		}
 		return token.Token{Kind: token.PLUS, Lexeme: "+", Span: l.makeSpan(start)}
 	case '-':
+		if l.peek() == '=' {
+			l.advance()
+			return token.Token{Kind: token.MINUS_ASSIGN, Lexeme: "-=", Span: l.makeSpan(start)}
+		}
 		return token.Token{Kind: token.MINUS, Lexeme: "-", Span: l.makeSpan(start)}
 	case '*':
+		if l.peek() == '=' {
+			l.advance()
+			return token.Token{Kind: token.STAR_ASSIGN, Lexeme: "*=", Span: l.makeSpan(start)}
+		}
 		return token.Token{Kind: token.STAR, Lexeme: "*", Span: l.makeSpan(start)}
 	case '/':
+		if l.peek() == '=' {
+			l.advance()
+			return token.Token{Kind: token.SLASH_ASSIGN, Lexeme: "/=", Span: l.makeSpan(start)}
+		}
 		return token.Token{Kind: token.SLASH, Lexeme: "/", Span: l.makeSpan(start)}
 	case '%':
 		return token.Token{Kind: token.PERCENT, Lexeme: "%", Span: l.makeSpan(start)}

@@ -151,6 +151,12 @@ func (i *Interpreter) execStmt(stmt ast.Stmt) (ExecResult, error) {
 	case *ast.WhileStmt:
 		return i.execWhile(s)
 
+	case *ast.ForStmt:
+		return i.execFor(s)
+
+	case *ast.ForOfStmt:
+		return i.execForOf(s)
+
 	case *ast.BlockStmt:
 		return i.execBlock(s, NewEnvironment(i.env))
 
@@ -202,7 +208,27 @@ func (i *Interpreter) execAssign(s *ast.AssignStmt) (ExecResult, error) {
 		}
 		objVal.Props[target.Property] = val
 	case *ast.IndexExpr:
-		return resultNone, runtimeErr(s.GetSpan(), "index assignment not yet supported")
+		obj, err := i.evalExpr(target.Object)
+		if err != nil {
+			return resultNone, err
+		}
+		idx, err := i.evalExpr(target.Index)
+		if err != nil {
+			return resultNone, err
+		}
+		switch o := obj.(type) {
+		case *ArrayVal:
+			idxInt, ok := ToInt64(idx)
+			if !ok {
+				return resultNone, runtimeErr(s.GetSpan(), "array index must be an integer")
+			}
+			if idxInt < 0 || int(idxInt) >= len(o.Elements) {
+				return resultNone, runtimeErr(s.GetSpan(), "array index %d out of range (length %d)", idxInt, len(o.Elements))
+			}
+			o.Elements[idxInt] = val
+		default:
+			return resultNone, runtimeErr(s.GetSpan(), "cannot index-assign value of type '%s'", obj.TypeName())
+		}
 	default:
 		return resultNone, runtimeErr(s.GetSpan(), "invalid assignment target")
 	}
@@ -331,6 +357,10 @@ func (i *Interpreter) evalExpr(expr ast.Expr) (Value, error) {
 		return i.evalIndex(e)
 	case *ast.NewExpr:
 		return i.evalNew(e)
+	case *ast.ArrayLiteral:
+		return i.evalArrayLiteral(e)
+	case *ast.FuncExpr:
+		return i.evalFuncExpr(e)
 	default:
 		return nil, runtimeErr(expr.GetSpan(), "unhandled expression type: %T", expr)
 	}
@@ -500,12 +530,14 @@ func (i *Interpreter) evalCall(e *ast.CallExpr) (Value, error) {
 			return nil, err
 		}
 
-		objVal, ok := obj.(*ObjectVal)
-		if !ok {
-			return nil, runtimeErr(e.GetSpan(), "cannot call method on non-object value of type '%s'", obj.TypeName())
+		switch o := obj.(type) {
+		case *ObjectVal:
+			return i.callMethod(o, member.Property, args, e.GetSpan())
+		case *ArrayVal:
+			return i.callArrayMethod(o, member.Property, args, e.GetSpan())
+		default:
+			return nil, runtimeErr(e.GetSpan(), "cannot call method on value of type '%s'", obj.TypeName())
 		}
-
-		return i.callMethod(objVal, member.Property, args, e.GetSpan())
 	}
 
 	// Regular call
@@ -592,16 +624,26 @@ func (i *Interpreter) evalMember(e *ast.MemberExpr) (Value, error) {
 		return nil, err
 	}
 
-	objVal, ok := obj.(*ObjectVal)
-	if !ok {
-		return nil, runtimeErr(e.GetSpan(), "cannot access property '%s' on non-object value of type '%s'",
+	switch o := obj.(type) {
+	case *ObjectVal:
+		if val, exists := o.Props[e.Property]; exists {
+			return val, nil
+		}
+		return NullVal{}, nil
+	case *ArrayVal:
+		if e.Property == "length" {
+			return IntVal(len(o.Elements)), nil
+		}
+		return nil, runtimeErr(e.GetSpan(), "array has no property '%s'", e.Property)
+	case StringVal:
+		if e.Property == "length" {
+			return IntVal(len(string(o))), nil
+		}
+		return nil, runtimeErr(e.GetSpan(), "string has no property '%s'", e.Property)
+	default:
+		return nil, runtimeErr(e.GetSpan(), "cannot access property '%s' on value of type '%s'",
 			e.Property, obj.TypeName())
 	}
-
-	if val, exists := objVal.Props[e.Property]; exists {
-		return val, nil
-	}
-	return NullVal{}, nil
 }
 
 func (i *Interpreter) evalIndex(e *ast.IndexExpr) (Value, error) {
@@ -625,6 +667,15 @@ func (i *Interpreter) evalIndex(e *ast.IndexExpr) (Value, error) {
 			return nil, runtimeErr(e.GetSpan(), "string index %d out of range (length %d)", idxInt, len(s))
 		}
 		return StringVal(string(s[idxInt])), nil
+	case *ArrayVal:
+		idxInt, ok := ToInt64(idx)
+		if !ok {
+			return nil, runtimeErr(e.GetSpan(), "array index must be an integer")
+		}
+		if idxInt < 0 || int(idxInt) >= len(o.Elements) {
+			return nil, runtimeErr(e.GetSpan(), "array index %d out of range (length %d)", idxInt, len(o.Elements))
+		}
+		return o.Elements[idxInt], nil
 	default:
 		return nil, runtimeErr(e.GetSpan(), "cannot index value of type '%s'", obj.TypeName())
 	}
@@ -683,6 +734,149 @@ func (i *Interpreter) evalNew(e *ast.NewExpr) (Value, error) {
 	}
 
 	return obj, nil
+}
+
+// ============================================================
+// For loop execution
+// ============================================================
+
+func (i *Interpreter) execFor(s *ast.ForStmt) (ExecResult, error) {
+	// Create scope for the for loop (init vars are scoped to the loop)
+	forEnv := NewEnvironment(i.env)
+	prevEnv := i.env
+	i.env = forEnv
+	defer func() { i.env = prevEnv }()
+
+	// Execute init
+	if s.Init != nil {
+		result, err := i.execNode(s.Init)
+		if err != nil {
+			return resultNone, err
+		}
+		if result.Signal != SigNone {
+			return result, nil
+		}
+	}
+
+	for {
+		// Check condition
+		if s.Condition != nil {
+			cond, err := i.evalExpr(s.Condition)
+			if err != nil {
+				return resultNone, err
+			}
+			if !IsTruthy(cond) {
+				break
+			}
+		}
+
+		// Execute body (new scope for each iteration)
+		result, err := i.execBlock(s.Body, NewEnvironment(i.env))
+		if err != nil {
+			return resultNone, err
+		}
+		if result.Signal == SigBreak {
+			break
+		}
+		if result.Signal == SigReturn {
+			return result, nil
+		}
+		// SigContinue: skip to update
+
+		// Execute update
+		if s.Update != nil {
+			_, err := i.execNode(s.Update)
+			if err != nil {
+				return resultNone, err
+			}
+		}
+	}
+
+	return resultNone, nil
+}
+
+func (i *Interpreter) execForOf(s *ast.ForOfStmt) (ExecResult, error) {
+	iterable, err := i.evalExpr(s.Iterable)
+	if err != nil {
+		return resultNone, err
+	}
+
+	arr, ok := iterable.(*ArrayVal)
+	if !ok {
+		return resultNone, runtimeErr(s.GetSpan(), "for-of requires an array, got '%s'", iterable.TypeName())
+	}
+
+	for _, elem := range arr.Elements {
+		loopEnv := NewEnvironment(i.env)
+		loopEnv.Define(s.VarName, elem, false)
+
+		result, err := i.execBlock(s.Body, loopEnv)
+		if err != nil {
+			return resultNone, err
+		}
+		if result.Signal == SigBreak {
+			break
+		}
+		if result.Signal == SigReturn {
+			return result, nil
+		}
+		// SigContinue: continue
+	}
+
+	return resultNone, nil
+}
+
+// ============================================================
+// Array methods
+// ============================================================
+
+func (i *Interpreter) evalArrayLiteral(e *ast.ArrayLiteral) (Value, error) {
+	elements := make([]Value, len(e.Elements))
+	for idx, elemExpr := range e.Elements {
+		val, err := i.evalExpr(elemExpr)
+		if err != nil {
+			return nil, err
+		}
+		elements[idx] = val
+	}
+	return &ArrayVal{Elements: elements}, nil
+}
+
+func (i *Interpreter) evalFuncExpr(e *ast.FuncExpr) (Value, error) {
+	name := e.Name
+	if name == "" {
+		name = "<anonymous>"
+	}
+	fn := &FuncVal{
+		Name:    name,
+		Params:  e.Params,
+		Body:    e.Body,
+		Closure: i.env,
+	}
+	return fn, nil
+}
+
+func (i *Interpreter) callArrayMethod(arr *ArrayVal, name string, args []Value, s span.Span) (Value, error) {
+	switch name {
+	case "push":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "push() expects 1 argument, got %d", len(args))
+		}
+		arr.Elements = append(arr.Elements, args[0])
+		return IntVal(len(arr.Elements)), nil
+	case "pop":
+		if len(args) != 0 {
+			return nil, runtimeErr(s, "pop() expects 0 arguments, got %d", len(args))
+		}
+		if len(arr.Elements) == 0 {
+			return nil, runtimeErr(s, "pop() on empty array")
+		}
+		last := arr.Elements[len(arr.Elements)-1]
+		arr.Elements = arr.Elements[:len(arr.Elements)-1]
+		return last, nil
+	default:
+		return nil, runtimeErr(s, "array has no method '%s'", name)
+	}
 }
 
 // ============================================================

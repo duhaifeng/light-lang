@@ -92,6 +92,26 @@ func (v *ObjectVal) String() string {
 	return fmt.Sprintf("<object %s>", v.Class.Decl.Name)
 }
 
+// ---- Array value ----
+
+// ArrayVal represents an array value.
+type ArrayVal struct {
+	Elements []Value
+}
+
+func (v *ArrayVal) TypeName() string { return "array" }
+func (v *ArrayVal) String() string {
+	parts := make([]string, len(v.Elements))
+	for i, elem := range v.Elements {
+		if s, ok := elem.(StringVal); ok {
+			parts[i] = fmt.Sprintf("\"%s\"", string(s))
+		} else {
+			parts[i] = elem.String()
+		}
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 // ---- Truthiness ----
 
 // IsTruthy returns the truthiness of a value (JS/Python style).

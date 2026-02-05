@@ -1,0 +1,42 @@
+// 数组基础操作
+var arr = [10, 20, 30, 40, 50]
+print(arr)
+print(arr.length)
+print(arr[0])
+print(arr[4])
+
+// 数组索引赋值
+arr[2] = 99
+print(arr[2])
+print(arr)
+
+// push / pop 方法调用
+arr.push(60)
+print(arr.length)
+var last = arr.pop()
+print(last)
+print(arr.length)
+
+// 内置函数 push / pop / len
+push(arr, 70)
+print(len(arr))
+var popped = pop(arr)
+print(popped)
+
+// 空数组
+var empty = []
+print(empty)
+print(empty.length)
+
+// 嵌套数组
+var nested = [[1, 2], [3, 4], [5, 6]]
+print(nested[0])
+print(nested[1][1])
+print(nested.length)
+
+// for-of 遍历
+var sum = 0
+for (var item of arr) {
+  sum += item
+}
+print(sum)

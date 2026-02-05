@@ -1,0 +1,71 @@
+// C-style for 循环 - 求和
+var sum = 0
+for (var i = 0; i < 10; i += 1) {
+  sum += i
+}
+print(sum)
+
+// 嵌套 for 循环
+var result = 0
+for (var i = 1; i <= 3; i += 1) {
+  for (var j = 1; j <= 3; j += 1) {
+    result += i * j
+  }
+}
+print(result)
+
+// for 循环中使用 break
+var found = -1
+for (var i = 0; i < 100; i += 1) {
+  if (i * i > 50) {
+    found = i
+    break
+  }
+}
+print(found)
+
+// for 循环中使用 continue
+var evenSum = 0
+for (var i = 0; i < 10; i += 1) {
+  if (i % 2 != 0) {
+    continue
+  }
+  evenSum += i
+}
+print(evenSum)
+
+// for-of 遍历数组
+var names = ["Alice", "Bob", "Charlie"]
+for (var name of names) {
+  print("Hello, " + name + "!")
+}
+
+// for-of + break
+var data = [1, 2, 3, -1, 5, 6]
+var total = 0
+for (var v of data) {
+  if (v < 0) {
+    break
+  }
+  total += v
+}
+print(total)
+
+// 复合赋值
+var x = 100
+x += 50
+print(x)
+x -= 30
+print(x)
+x *= 2
+print(x)
+x /= 4
+print(x)
+
+// for 循环的 init 变量作用域
+for (var i = 0; i < 3; i += 1) {
+  // i 在循环内可见
+}
+// i 不再可见，重新声明
+var i = 999
+print(i)

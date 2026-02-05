@@ -147,6 +147,20 @@ type NewExpr struct {
 	Args      []Expr
 }
 
+// ArrayLiteral represents an array literal: [a, b, c].
+type ArrayLiteral struct {
+	ExprBase
+	Elements []Expr
+}
+
+// FuncExpr represents a function expression: function(params) { body } or function name(params) { body }.
+type FuncExpr struct {
+	ExprBase
+	Name   string // may be empty for anonymous functions
+	Params []string
+	Body   *BlockStmt
+}
+
 // ============================================================
 // Statements
 // ============================================================
@@ -215,6 +229,23 @@ type WhileStmt struct {
 	StmtBase
 	Condition Expr
 	Body      *BlockStmt
+}
+
+// ForStmt represents a C-style for loop: for (init; condition; update) { body }.
+type ForStmt struct {
+	StmtBase
+	Init      Node // VarDeclStmt, AssignStmt, ExprStmt, or nil
+	Condition Expr // or nil (infinite loop)
+	Update    Node // AssignStmt, ExprStmt, or nil
+	Body      *BlockStmt
+}
+
+// ForOfStmt represents a for-of loop: for (var name of iterable) { body }.
+type ForOfStmt struct {
+	StmtBase
+	VarName  string
+	Iterable Expr
+	Body     *BlockStmt
 }
 
 // ============================================================
