@@ -576,6 +576,16 @@ func (p *Parser) nud() ast.Expr {
 			Value:    tok.Lexeme,
 		}
 
+	case token.TEMPLATE_LITERAL:
+		p.advance()
+		return &ast.StringLiteral{
+			ExprBase: makeExprBase(tok.Span.Start, tok.Span.End),
+			Value:    tok.Lexeme,
+		}
+
+	case token.TEMPLATE_HEAD:
+		return p.parseTemplateLiteral()
+
 	case token.KW_TRUE:
 		p.advance()
 		return &ast.BoolLiteral{
@@ -990,6 +1000,42 @@ func (p *Parser) parseArrowBody(start span.Position, params []string) *ast.FuncE
 		ExprBase: makeExprBase(start, p.prevEnd()),
 		Params:   params,
 		Body:     body,
+	}
+}
+
+// ============================================================
+// Template literal parsing
+// ============================================================
+
+// parseTemplateLiteral parses: `text${expr}text${expr}text`
+func (p *Parser) parseTemplateLiteral() *ast.TemplateLiteral {
+	head := p.advance() // consume TEMPLATE_HEAD
+	parts := []string{head.Lexeme}
+	var exprs []ast.Expr
+
+	// Parse first expression
+	exprs = append(exprs, p.parseExpr(bpNone))
+
+	// Continue with TEMPLATE_MIDDLE / TEMPLATE_TAIL
+	for p.check(token.TEMPLATE_MIDDLE) {
+		mid := p.advance()
+		parts = append(parts, mid.Lexeme)
+		exprs = append(exprs, p.parseExpr(bpNone))
+	}
+
+	// Expect TEMPLATE_TAIL
+	if p.check(token.TEMPLATE_TAIL) {
+		tail := p.advance()
+		parts = append(parts, tail.Lexeme)
+	} else {
+		p.error("E2005", p.peek().Span, "unterminated template literal, expected closing `")
+		parts = append(parts, "")
+	}
+
+	return &ast.TemplateLiteral{
+		ExprBase: makeExprBase(head.Span.Start, p.prevEnd()),
+		Parts:    parts,
+		Exprs:    exprs,
 	}
 }
 

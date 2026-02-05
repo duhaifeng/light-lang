@@ -1,0 +1,69 @@
+=== String Methods ===
+["Hello", "World!"]
+7
+Hello
+World!
+HELLO, WORLD!
+hello, world!
+Hello, Light!
+xxbxx
+true
+true
+true
+false
+H
+W
+hello
+hello  
+  hello
+World
+----------
+13
+the-quick-brown-fox
+
+=== Array Methods ===
+[6, 2, 8, 2, 10, 18, 4, 12]
+[4, 5, 9, 6]
+31
+2
+-1
+true
+false
+3, 1, 4, 1, 5, 9, 2, 6
+[4, 1, 5]
+[1, 2, 3, 4, 5, 6, 7, 8]
+[8, 5, 4, 3, 1]
+[5, 4, 3, 2, 1]
+31
+5
+[1, 2, 3, 4, 5, 6]
+[1, 2, 3, 4, 5]
+220
+ALICE, BOB, CHARLIE
+
+=== Template Literals ===
+Hello, Alice!
+Alice is 30 years old
+2 + 3 = 5
+age > 18: adult
+Welcome, dear Alice!
+Name uppercase: ALICE
+Name length: 5
+line1
+line2
+tab	here
+backtick: `
+dollar: ${not interpolated}
+
+items: apple, banana, cherry
+count: 3, first: apple
+
+=== Integration ===
+name: Bob, age: 25, city: Tokyo
+hi world | hi light | hi everyone
+Average: 86
+Above 90: 92, 95, 91
+Min: 76, Max: 95
+"the" appears 3 times
+"cat" appears 2 times
+"sat" appears 1 times

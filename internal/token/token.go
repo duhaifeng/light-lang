@@ -50,6 +50,12 @@ const (
 	QUESTION // ?
 	ARROW    // =>
 
+	// Template string tokens
+	TEMPLATE_LITERAL // `text` (no expressions)
+	TEMPLATE_HEAD    // `text${  (before first expression)
+	TEMPLATE_MIDDLE  // }text${  (between expressions)
+	TEMPLATE_TAIL    // }text`   (after last expression)
+
 	// Delimiters
 	LPAREN    // (
 	RPAREN    // )
@@ -117,8 +123,12 @@ var kindNames = map[Kind]string{
 	MINUS_ASSIGN: "-=",
 	STAR_ASSIGN:  "*=",
 	SLASH_ASSIGN: "/=",
-	QUESTION:     "?",
-	ARROW:        "=>",
+	QUESTION:         "?",
+	ARROW:            "=>",
+	TEMPLATE_LITERAL: "TEMPLATE_LITERAL",
+	TEMPLATE_HEAD:    "TEMPLATE_HEAD",
+	TEMPLATE_MIDDLE:  "TEMPLATE_MIDDLE",
+	TEMPLATE_TAIL:    "TEMPLATE_TAIL",
 
 	LPAREN:    "(",
 	RPAREN:    ")",

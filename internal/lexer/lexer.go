@@ -19,7 +19,8 @@ type Lexer struct {
 	line int // current line (1-based)
 	col  int // current column (1-based)
 
-	diags []diag.Diagnostic
+	diags         []diag.Diagnostic
+	templateStack []int // brace depth stack for template string expressions
 }
 
 // New creates a new Lexer for the given source text.
@@ -146,6 +147,11 @@ func (l *Lexer) nextToken() token.Token {
 		return l.readString(start)
 	}
 
+	// Template string literal
+	if ch == '`' {
+		return l.readTemplateStart(start)
+	}
+
 	// Number literal
 	if isDigit(ch) {
 		return l.readNumber(start)
@@ -257,8 +263,28 @@ func (l *Lexer) readOperator(start span.Position) token.Token {
 	case ')':
 		return token.Token{Kind: token.RPAREN, Lexeme: ")", Span: l.makeSpan(start)}
 	case '{':
+		if len(l.templateStack) > 0 {
+			l.templateStack[len(l.templateStack)-1]++
+		}
 		return token.Token{Kind: token.LBRACE, Lexeme: "{", Span: l.makeSpan(start)}
 	case '}':
+		if len(l.templateStack) > 0 && l.templateStack[len(l.templateStack)-1] == 0 {
+			// Closing a template expression — continue reading template text
+			l.templateStack = l.templateStack[:len(l.templateStack)-1]
+			text := l.readTemplateText()
+			if l.peek() == '`' {
+				l.advance()
+				return token.Token{Kind: token.TEMPLATE_TAIL, Lexeme: text, Span: l.makeSpan(start)}
+			}
+			// Must be ${ — another expression follows
+			l.advance() // $
+			l.advance() // {
+			l.templateStack = append(l.templateStack, 0)
+			return token.Token{Kind: token.TEMPLATE_MIDDLE, Lexeme: text, Span: l.makeSpan(start)}
+		}
+		if len(l.templateStack) > 0 {
+			l.templateStack[len(l.templateStack)-1]--
+		}
 		return token.Token{Kind: token.RBRACE, Lexeme: "}", Span: l.makeSpan(start)}
 	case '[':
 		return token.Token{Kind: token.LBRACKET, Lexeme: "[", Span: l.makeSpan(start)}
@@ -346,6 +372,70 @@ func (l *Lexer) readOperator(start span.Position) token.Token {
 		l.addError("E1003", l.makeSpan(start), fmt.Sprintf("unexpected character: '%c'", ch))
 		return token.Token{Kind: token.ILLEGAL, Lexeme: string(ch), Span: l.makeSpan(start)}
 	}
+}
+
+// ---- template string helpers ----
+
+// readTemplateStart is called when we encounter a backtick (`).
+// It reads template text and determines if this is a simple literal or a head.
+func (l *Lexer) readTemplateStart(start span.Position) token.Token {
+	l.advance() // consume opening `
+	text := l.readTemplateText()
+
+	if l.peek() == '`' {
+		l.advance() // consume closing `
+		return token.Token{Kind: token.TEMPLATE_LITERAL, Lexeme: text, Span: l.makeSpan(start)}
+	}
+
+	// Must be ${ — template with expressions
+	l.advance() // $
+	l.advance() // {
+	l.templateStack = append(l.templateStack, 0)
+	return token.Token{Kind: token.TEMPLATE_HEAD, Lexeme: text, Span: l.makeSpan(start)}
+}
+
+// readTemplateText reads characters until ` or ${ is found (or EOF).
+func (l *Lexer) readTemplateText() string {
+	var text []byte
+	for l.pos < len(l.source) {
+		ch := l.peek()
+		if ch == '`' {
+			break
+		}
+		if ch == '$' && l.peekNext() == '{' {
+			break
+		}
+		if ch == '\\' {
+			l.advance()
+			if l.pos >= len(l.source) {
+				break
+			}
+			esc := l.peek()
+			switch esc {
+			case 'n':
+				text = append(text, '\n')
+			case 't':
+				text = append(text, '\t')
+			case '\\':
+				text = append(text, '\\')
+			case '`':
+				text = append(text, '`')
+			case '$':
+				text = append(text, '$')
+			default:
+				text = append(text, '\\', esc)
+			}
+			l.advance()
+			continue
+		}
+		if ch == '\n' {
+			l.line++
+			l.col = 0
+		}
+		text = append(text, ch)
+		l.advance()
+	}
+	return string(text)
 }
 
 // ---- character classification ----

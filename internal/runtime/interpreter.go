@@ -6,6 +6,8 @@ import (
 	"light-lang/internal/ast"
 	"light-lang/internal/span"
 	"light-lang/internal/token"
+	"sort"
+	"strings"
 )
 
 // ============================================================
@@ -412,6 +414,8 @@ func (i *Interpreter) evalExpr(expr ast.Expr) (Value, error) {
 		return i.evalTernary(e)
 	case *ast.MapLiteral:
 		return i.evalMapLiteral(e)
+	case *ast.TemplateLiteral:
+		return i.evalTemplateLiteral(e)
 	case *ast.SuperExpr:
 		return nil, runtimeErr(e.GetSpan(), "super can only be used as super() or super.method()")
 	default:
@@ -598,6 +602,8 @@ func (i *Interpreter) evalCall(e *ast.CallExpr) (Value, error) {
 			return i.callMethod(o, member.Property, args, e.GetSpan())
 		case *ArrayVal:
 			return i.callArrayMethod(o, member.Property, args, e.GetSpan())
+		case StringVal:
+			return i.callStringMethod(string(o), member.Property, args, e.GetSpan())
 		default:
 			return nil, runtimeErr(e.GetSpan(), "cannot call method on value of type '%s'", obj.TypeName())
 		}
@@ -1104,6 +1110,216 @@ func (i *Interpreter) evalFuncExpr(e *ast.FuncExpr) (Value, error) {
 	return fn, nil
 }
 
+// ============================================================
+// Template literal evaluation
+// ============================================================
+
+func (i *Interpreter) evalTemplateLiteral(e *ast.TemplateLiteral) (Value, error) {
+	var sb strings.Builder
+	for idx, part := range e.Parts {
+		sb.WriteString(part)
+		if idx < len(e.Exprs) {
+			val, err := i.evalExpr(e.Exprs[idx])
+			if err != nil {
+				return nil, err
+			}
+			sb.WriteString(val.String())
+		}
+	}
+	return StringVal(sb.String()), nil
+}
+
+// ============================================================
+// String methods
+// ============================================================
+
+func (i *Interpreter) callStringMethod(s string, name string, args []Value, sp span.Span) (Value, error) {
+	switch name {
+	case "split":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "split() expects 1 argument, got %d", len(args))
+		}
+		sep, ok := args[0].(StringVal)
+		if !ok {
+			return nil, runtimeErr(sp, "split() separator must be a string")
+		}
+		parts := strings.Split(s, string(sep))
+		elements := make([]Value, len(parts))
+		for idx, p := range parts {
+			elements[idx] = StringVal(p)
+		}
+		return &ArrayVal{Elements: elements}, nil
+
+	case "trim":
+		if len(args) != 0 {
+			return nil, runtimeErr(sp, "trim() expects 0 arguments, got %d", len(args))
+		}
+		return StringVal(strings.TrimSpace(s)), nil
+
+	case "indexOf":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "indexOf() expects 1 argument, got %d", len(args))
+		}
+		sub, ok := args[0].(StringVal)
+		if !ok {
+			return nil, runtimeErr(sp, "indexOf() argument must be a string")
+		}
+		return IntVal(strings.Index(s, string(sub))), nil
+
+	case "slice":
+		if len(args) < 1 || len(args) > 2 {
+			return nil, runtimeErr(sp, "slice() expects 1-2 arguments, got %d", len(args))
+		}
+		start, ok := ToInt64(args[0])
+		if !ok {
+			return nil, runtimeErr(sp, "slice() start must be an integer")
+		}
+		end := int64(len(s))
+		if len(args) == 2 {
+			end, ok = ToInt64(args[1])
+			if !ok {
+				return nil, runtimeErr(sp, "slice() end must be an integer")
+			}
+		}
+		if start < 0 {
+			start = int64(len(s)) + start
+		}
+		if end < 0 {
+			end = int64(len(s)) + end
+		}
+		if start < 0 {
+			start = 0
+		}
+		if end > int64(len(s)) {
+			end = int64(len(s))
+		}
+		if start >= end {
+			return StringVal(""), nil
+		}
+		return StringVal(s[start:end]), nil
+
+	case "toUpperCase":
+		return StringVal(strings.ToUpper(s)), nil
+
+	case "toLowerCase":
+		return StringVal(strings.ToLower(s)), nil
+
+	case "replace":
+		if len(args) != 2 {
+			return nil, runtimeErr(sp, "replace() expects 2 arguments, got %d", len(args))
+		}
+		old, ok1 := args[0].(StringVal)
+		newStr, ok2 := args[1].(StringVal)
+		if !ok1 || !ok2 {
+			return nil, runtimeErr(sp, "replace() arguments must be strings")
+		}
+		return StringVal(strings.Replace(s, string(old), string(newStr), 1)), nil
+
+	case "replaceAll":
+		if len(args) != 2 {
+			return nil, runtimeErr(sp, "replaceAll() expects 2 arguments, got %d", len(args))
+		}
+		old, ok1 := args[0].(StringVal)
+		newStr, ok2 := args[1].(StringVal)
+		if !ok1 || !ok2 {
+			return nil, runtimeErr(sp, "replaceAll() arguments must be strings")
+		}
+		return StringVal(strings.ReplaceAll(s, string(old), string(newStr))), nil
+
+	case "startsWith":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "startsWith() expects 1 argument, got %d", len(args))
+		}
+		prefix, ok := args[0].(StringVal)
+		if !ok {
+			return nil, runtimeErr(sp, "startsWith() argument must be a string")
+		}
+		return BoolVal(strings.HasPrefix(s, string(prefix))), nil
+
+	case "endsWith":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "endsWith() expects 1 argument, got %d", len(args))
+		}
+		suffix, ok := args[0].(StringVal)
+		if !ok {
+			return nil, runtimeErr(sp, "endsWith() argument must be a string")
+		}
+		return BoolVal(strings.HasSuffix(s, string(suffix))), nil
+
+	case "includes":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "includes() expects 1 argument, got %d", len(args))
+		}
+		sub, ok := args[0].(StringVal)
+		if !ok {
+			return nil, runtimeErr(sp, "includes() argument must be a string")
+		}
+		return BoolVal(strings.Contains(s, string(sub))), nil
+
+	case "charAt":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "charAt() expects 1 argument, got %d", len(args))
+		}
+		idx, ok := ToInt64(args[0])
+		if !ok {
+			return nil, runtimeErr(sp, "charAt() argument must be an integer")
+		}
+		if idx < 0 || int(idx) >= len(s) {
+			return StringVal(""), nil
+		}
+		return StringVal(string(s[idx])), nil
+
+	case "substring":
+		if len(args) < 1 || len(args) > 2 {
+			return nil, runtimeErr(sp, "substring() expects 1-2 arguments, got %d", len(args))
+		}
+		start, ok := ToInt64(args[0])
+		if !ok {
+			return nil, runtimeErr(sp, "substring() start must be an integer")
+		}
+		end := int64(len(s))
+		if len(args) == 2 {
+			end, ok = ToInt64(args[1])
+			if !ok {
+				return nil, runtimeErr(sp, "substring() end must be an integer")
+			}
+		}
+		if start < 0 {
+			start = 0
+		}
+		if end > int64(len(s)) {
+			end = int64(len(s))
+		}
+		if start > end {
+			start, end = end, start
+		}
+		return StringVal(s[start:end]), nil
+
+	case "repeat":
+		if len(args) != 1 {
+			return nil, runtimeErr(sp, "repeat() expects 1 argument, got %d", len(args))
+		}
+		count, ok := ToInt64(args[0])
+		if !ok || count < 0 {
+			return nil, runtimeErr(sp, "repeat() count must be a non-negative integer")
+		}
+		return StringVal(strings.Repeat(s, int(count))), nil
+
+	case "trimStart":
+		return StringVal(strings.TrimLeft(s, " \t\n\r")), nil
+
+	case "trimEnd":
+		return StringVal(strings.TrimRight(s, " \t\n\r")), nil
+
+	default:
+		return nil, runtimeErr(sp, "string has no method '%s'", name)
+	}
+}
+
+// ============================================================
+// Array methods (extended)
+// ============================================================
+
 func (i *Interpreter) callArrayMethod(arr *ArrayVal, name string, args []Value, s span.Span) (Value, error) {
 	switch name {
 	case "push":
@@ -1112,6 +1328,7 @@ func (i *Interpreter) callArrayMethod(arr *ArrayVal, name string, args []Value, 
 		}
 		arr.Elements = append(arr.Elements, args[0])
 		return IntVal(len(arr.Elements)), nil
+
 	case "pop":
 		if len(args) != 0 {
 			return nil, runtimeErr(s, "pop() expects 0 arguments, got %d", len(args))
@@ -1122,9 +1339,262 @@ func (i *Interpreter) callArrayMethod(arr *ArrayVal, name string, args []Value, 
 		last := arr.Elements[len(arr.Elements)-1]
 		arr.Elements = arr.Elements[:len(arr.Elements)-1]
 		return last, nil
+
+	case "map":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "map() expects 1 argument, got %d", len(args))
+		}
+		fn := args[0]
+		result := make([]Value, len(arr.Elements))
+		for idx, elem := range arr.Elements {
+			val, err := i.callValue(fn, []Value{elem}, s)
+			if err != nil {
+				return nil, err
+			}
+			result[idx] = val
+		}
+		return &ArrayVal{Elements: result}, nil
+
+	case "filter":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "filter() expects 1 argument, got %d", len(args))
+		}
+		fn := args[0]
+		var result []Value
+		for _, elem := range arr.Elements {
+			val, err := i.callValue(fn, []Value{elem}, s)
+			if err != nil {
+				return nil, err
+			}
+			if IsTruthy(val) {
+				result = append(result, elem)
+			}
+		}
+		if result == nil {
+			result = []Value{}
+		}
+		return &ArrayVal{Elements: result}, nil
+
+	case "reduce":
+		if len(args) < 1 || len(args) > 2 {
+			return nil, runtimeErr(s, "reduce() expects 1-2 arguments, got %d", len(args))
+		}
+		fn := args[0]
+		var acc Value
+		startIdx := 0
+		if len(args) == 2 {
+			acc = args[1]
+		} else {
+			if len(arr.Elements) == 0 {
+				return nil, runtimeErr(s, "reduce() of empty array with no initial value")
+			}
+			acc = arr.Elements[0]
+			startIdx = 1
+		}
+		for idx := startIdx; idx < len(arr.Elements); idx++ {
+			val, err := i.callValue(fn, []Value{acc, arr.Elements[idx]}, s)
+			if err != nil {
+				return nil, err
+			}
+			acc = val
+		}
+		return acc, nil
+
+	case "forEach":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "forEach() expects 1 argument, got %d", len(args))
+		}
+		fn := args[0]
+		for _, elem := range arr.Elements {
+			_, err := i.callValue(fn, []Value{elem}, s)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return NullVal{}, nil
+
+	case "find":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "find() expects 1 argument, got %d", len(args))
+		}
+		fn := args[0]
+		for _, elem := range arr.Elements {
+			val, err := i.callValue(fn, []Value{elem}, s)
+			if err != nil {
+				return nil, err
+			}
+			if IsTruthy(val) {
+				return elem, nil
+			}
+		}
+		return NullVal{}, nil
+
+	case "sort":
+		if len(args) > 1 {
+			return nil, runtimeErr(s, "sort() expects 0-1 arguments, got %d", len(args))
+		}
+		if len(args) == 0 {
+			sort.SliceStable(arr.Elements, func(a, b int) bool {
+				return compareValues(arr.Elements[a], arr.Elements[b]) < 0
+			})
+		} else {
+			fn := args[0]
+			var sortErr error
+			sort.SliceStable(arr.Elements, func(a, b int) bool {
+				if sortErr != nil {
+					return false
+				}
+				result, err := i.callValue(fn, []Value{arr.Elements[a], arr.Elements[b]}, s)
+				if err != nil {
+					sortErr = err
+					return false
+				}
+				n, ok := ToFloat64(result)
+				if !ok {
+					sortErr = runtimeErr(s, "sort comparator must return a number")
+					return false
+				}
+				return n < 0
+			})
+			if sortErr != nil {
+				return nil, sortErr
+			}
+		}
+		return arr, nil
+
+	case "reverse":
+		for left, right := 0, len(arr.Elements)-1; left < right; left, right = left+1, right-1 {
+			arr.Elements[left], arr.Elements[right] = arr.Elements[right], arr.Elements[left]
+		}
+		return arr, nil
+
+	case "join":
+		sep := ","
+		if len(args) == 1 {
+			sepVal, ok := args[0].(StringVal)
+			if !ok {
+				return nil, runtimeErr(s, "join() separator must be a string")
+			}
+			sep = string(sepVal)
+		} else if len(args) > 1 {
+			return nil, runtimeErr(s, "join() expects 0-1 arguments, got %d", len(args))
+		}
+		parts := make([]string, len(arr.Elements))
+		for idx, elem := range arr.Elements {
+			parts[idx] = elem.String()
+		}
+		return StringVal(strings.Join(parts, sep)), nil
+
+	case "slice":
+		if len(args) < 1 || len(args) > 2 {
+			return nil, runtimeErr(s, "slice() expects 1-2 arguments, got %d", len(args))
+		}
+		start, ok := ToInt64(args[0])
+		if !ok {
+			return nil, runtimeErr(s, "slice() start must be an integer")
+		}
+		end := int64(len(arr.Elements))
+		if len(args) == 2 {
+			end, ok = ToInt64(args[1])
+			if !ok {
+				return nil, runtimeErr(s, "slice() end must be an integer")
+			}
+		}
+		if start < 0 {
+			start = int64(len(arr.Elements)) + start
+		}
+		if end < 0 {
+			end = int64(len(arr.Elements)) + end
+		}
+		if start < 0 {
+			start = 0
+		}
+		if end > int64(len(arr.Elements)) {
+			end = int64(len(arr.Elements))
+		}
+		if start >= end {
+			return &ArrayVal{Elements: []Value{}}, nil
+		}
+		// Return a new copy of the slice
+		newElems := make([]Value, end-start)
+		copy(newElems, arr.Elements[start:end])
+		return &ArrayVal{Elements: newElems}, nil
+
+	case "indexOf":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "indexOf() expects 1 argument, got %d", len(args))
+		}
+		for idx, elem := range arr.Elements {
+			if valuesEqual(elem, args[0]) {
+				return IntVal(idx), nil
+			}
+		}
+		return IntVal(-1), nil
+
+	case "includes":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "includes() expects 1 argument, got %d", len(args))
+		}
+		for _, elem := range arr.Elements {
+			if valuesEqual(elem, args[0]) {
+				return BoolVal(true), nil
+			}
+		}
+		return BoolVal(false), nil
+
+	case "concat":
+		if len(args) != 1 {
+			return nil, runtimeErr(s, "concat() expects 1 argument, got %d", len(args))
+		}
+		other, ok := args[0].(*ArrayVal)
+		if !ok {
+			return nil, runtimeErr(s, "concat() argument must be an array")
+		}
+		newElems := make([]Value, len(arr.Elements)+len(other.Elements))
+		copy(newElems, arr.Elements)
+		copy(newElems[len(arr.Elements):], other.Elements)
+		return &ArrayVal{Elements: newElems}, nil
+
+	case "flat":
+		var result []Value
+		for _, elem := range arr.Elements {
+			if inner, ok := elem.(*ArrayVal); ok {
+				result = append(result, inner.Elements...)
+			} else {
+				result = append(result, elem)
+			}
+		}
+		if result == nil {
+			result = []Value{}
+		}
+		return &ArrayVal{Elements: result}, nil
+
 	default:
 		return nil, runtimeErr(s, "array has no method '%s'", name)
 	}
+}
+
+// compareValues compares two values for sorting.
+func compareValues(a, b Value) int {
+	af, aOk := ToFloat64(a)
+	bf, bOk := ToFloat64(b)
+	if aOk && bOk {
+		if af < bf {
+			return -1
+		}
+		if af > bf {
+			return 1
+		}
+		return 0
+	}
+	as, bs := a.String(), b.String()
+	if as < bs {
+		return -1
+	}
+	if as > bs {
+		return 1
+	}
+	return 0
 }
 
 // ============================================================

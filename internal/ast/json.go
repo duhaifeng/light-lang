@@ -69,6 +69,10 @@ func NodeToMap(node Node) map[string]interface{} {
 			"values", exprSlice(n.Values))
 	case *SuperExpr:
 		return m("SuperExpr", n.Span)
+	case *TemplateLiteral:
+		return m("TemplateLiteral", n.Span,
+			"parts", n.Parts,
+			"exprs", exprSlice(n.Exprs))
 
 	// ---- Statements ----
 	case *ExprStmt:

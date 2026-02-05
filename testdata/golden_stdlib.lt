@@ -1,0 +1,226 @@
+// ============================================================
+// Golden test: String methods, Array methods, Template literals
+// ============================================================
+
+// ============================================================
+// Part 1: String methods
+// ============================================================
+println("=== String Methods ===")
+
+var greeting = "Hello, World!"
+
+// split
+var parts = greeting.split(", ")
+println(parts)
+
+// indexOf
+println(greeting.indexOf("World"))
+
+// slice
+println(greeting.slice(0, 5))
+println(greeting.slice(-6))
+
+// toUpperCase / toLowerCase
+println(greeting.toUpperCase())
+println(greeting.toLowerCase())
+
+// replace / replaceAll
+println(greeting.replace("World", "Light"))
+var repeated = "aabaa"
+println(repeated.replaceAll("a", "x"))
+
+// startsWith / endsWith / includes
+println(greeting.startsWith("Hello"))
+println(greeting.endsWith("!"))
+println(greeting.includes("World"))
+println(greeting.includes("xyz"))
+
+// charAt
+println(greeting.charAt(0))
+println(greeting.charAt(7))
+
+// trim / trimStart / trimEnd
+var padded = "  hello  "
+println(padded.trim())
+println(padded.trimStart())
+println(padded.trimEnd())
+
+// substring
+println(greeting.substring(7, 12))
+
+// repeat
+var dash = "-"
+println(dash.repeat(10))
+
+// length property
+println(greeting.length)
+
+// chained string methods
+var sentence = "  The Quick Brown Fox  "
+println(sentence.trim().toLowerCase().split(" ").join("-"))
+
+// ============================================================
+// Part 2: Array methods
+// ============================================================
+println("")
+println("=== Array Methods ===")
+
+var nums = [3, 1, 4, 1, 5, 9, 2, 6]
+
+// map
+var doubled = nums.map(x => x * 2)
+println(doubled)
+
+// filter
+var big = nums.filter(x => x > 3)
+println(big)
+
+// reduce
+var sum = nums.reduce((a, b) => a + b, 0)
+println(sum)
+
+// indexOf / includes
+println(nums.indexOf(4))
+println(nums.indexOf(99))
+println(nums.includes(5))
+println(nums.includes(99))
+
+// join
+println(nums.join(", "))
+
+// slice
+var mid = nums.slice(2, 5)
+println(mid)
+
+// sort (default - numeric)
+var unsorted = [5, 3, 8, 1, 4, 2, 7, 6]
+unsorted.sort()
+println(unsorted)
+
+// sort (custom comparator - descending)
+var desc = [5, 3, 8, 1, 4]
+desc.sort((a, b) => b - a)
+println(desc)
+
+// reverse
+var rev = [1, 2, 3, 4, 5]
+rev.reverse()
+println(rev)
+
+// forEach
+var forEachSum = 0
+nums.forEach(x => { forEachSum += x })
+println(forEachSum)
+
+// find
+var found = nums.find(x => x > 4)
+println(found)
+
+// concat
+var a1 = [1, 2, 3]
+var a2 = [4, 5, 6]
+println(a1.concat(a2))
+
+// flat
+var nested = [[1, 2], [3, 4], [5]]
+println(nested.flat())
+
+// chained array methods
+var result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(x => x % 2 == 0).map(x => x * x).reduce((a, b) => a + b, 0)
+println(result)
+
+// map + join for formatting
+var names = ["alice", "bob", "charlie"]
+var formatted = names.map(n => n.toUpperCase()).join(", ")
+println(formatted)
+
+// ============================================================
+// Part 3: Template literals / String interpolation
+// ============================================================
+println("")
+println("=== Template Literals ===")
+
+var name = "Alice"
+var age = 30
+
+// Basic interpolation
+println(`Hello, ${name}!`)
+println(`${name} is ${age} years old`)
+
+// Expressions in templates
+println(`2 + 3 = ${2 + 3}`)
+println(`age > 18: ${age > 18 ? "adult" : "minor"}`)
+
+// Nested template literal
+var greeting2 = `Welcome, ${`dear ${name}`}!`
+println(greeting2)
+
+// Template with method calls
+println(`Name uppercase: ${name.toUpperCase()}`)
+println(`Name length: ${name.length}`)
+
+// Escaped characters
+println(`line1\nline2`)
+println(`tab\there`)
+println(`backtick: \``)
+println(`dollar: \${not interpolated}`)
+
+// Empty template
+println(``)
+
+// Template with complex expressions
+var items = ["apple", "banana", "cherry"]
+println(`items: ${items.join(", ")}`)
+println(`count: ${items.length}, first: ${items[0]}`)
+
+// ============================================================
+// Part 4: Combined integration test
+// ============================================================
+println("")
+println("=== Integration ===")
+
+// CSV parsing and processing
+var csv = "name,age,city"
+var headers = csv.split(",")
+var row = "Bob,25,Tokyo"
+var fields = row.split(",")
+
+// Build a record using template literals and array methods
+var record = ""
+for (var idx = 0; idx < headers.length; idx += 1) {
+    if (idx > 0) {
+        record = record + ", "
+    }
+    record = record + `${headers[idx]}: ${fields[idx]}`
+}
+println(record)
+
+// String processing pipeline
+var text = "  Hello World, Hello Light, Hello Everyone  "
+var words = text.trim().split(", ")
+var processed = words.map(w => w.toLowerCase().replace("hello", "hi"))
+println(processed.join(" | "))
+
+// Array analytics
+var scores = [85, 92, 78, 95, 88, 76, 91, 83]
+var avg = scores.reduce((a, b) => a + b, 0) / scores.length
+var above90 = scores.filter(s => s > 90)
+var sorted = [85, 92, 78, 95, 88, 76, 91, 83]
+sorted.sort()
+println(`Average: ${avg}`)
+println(`Above 90: ${above90.join(", ")}`)
+println(`Min: ${sorted[0]}, Max: ${sorted[sorted.length - 1]}`)
+
+// Word frequency counter
+var sentence2 = "the cat sat on the mat the cat"
+var wordList = sentence2.split(" ")
+var freq = {}
+for (var w of wordList) {
+    if (freq[w] == null) {
+        freq[w] = 0
+    }
+    freq[w] = freq[w] + 1
+}
+println(`"the" appears ${freq["the"]} times`)
+println(`"cat" appears ${freq["cat"]} times`)
+println(`"sat" appears ${freq["sat"]} times`)

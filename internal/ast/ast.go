@@ -181,6 +181,14 @@ type SuperExpr struct {
 	ExprBase
 }
 
+// TemplateLiteral represents a template string: `text ${expr} text`.
+// Parts has len(Exprs)+1 elements; Parts[i] is the text before Exprs[i].
+type TemplateLiteral struct {
+	ExprBase
+	Parts []string // static text segments
+	Exprs []Expr   // interpolated expressions
+}
+
 // ============================================================
 // Statements
 // ============================================================
