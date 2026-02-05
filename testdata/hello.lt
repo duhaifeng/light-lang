@@ -1,5 +1,4 @@
 // A simple hello world program
-function main() {
-  var x = 1 + 2 * 3
-  print(x)
-}
+var x = 1 + 2 * 3
+print(x)
+print("hello, light-lang!")
