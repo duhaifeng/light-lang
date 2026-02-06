@@ -114,6 +114,30 @@ func RegisterBuiltins(env *Environment, w io.Writer) {
 		},
 	}, true)
 
+	env.Define("implements", &BuiltinVal{
+		Name: "implements",
+		Fn: func(args []Value) (Value, error) {
+			if len(args) != 2 {
+				return nil, fmt.Errorf("implements() expects 2 arguments, got %d", len(args))
+			}
+			obj, ok := args[0].(*ObjectVal)
+			if !ok {
+				return BoolVal(false), nil
+			}
+			iface, ok := args[1].(*InterfaceVal)
+			if !ok {
+				return nil, fmt.Errorf("implements() second argument must be an interface, got '%s'", args[1].TypeName())
+			}
+			for _, sig := range iface.Decl.Methods {
+				method, _ := findMethod(obj.Class, sig.Name)
+				if method == nil || len(method.Params) != sig.ParamCount {
+					return BoolVal(false), nil
+				}
+			}
+			return BoolVal(true), nil
+		},
+	}, true)
+
 	env.Define("values", &BuiltinVal{
 		Name: "values",
 		Fn: func(args []Value) (Value, error) {

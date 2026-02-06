@@ -149,6 +149,26 @@ func NodeToMap(node Node) map[string]interface{} {
 		return result
 	case *ThrowStmt:
 		return m("ThrowStmt", n.Span, "value", NodeToMap(n.Value))
+	case *MatchStmt:
+		arms := make([]interface{}, len(n.Arms))
+		for i, arm := range n.Arms {
+			armMap := map[string]interface{}{
+				"span":      spanToMap(arm.Span),
+				"isDefault": arm.IsDefault,
+				"body":      NodeToMap(arm.Body),
+			}
+			if len(arm.Patterns) > 0 {
+				armMap["patterns"] = exprSlice(arm.Patterns)
+			}
+			if arm.BindVar != "" {
+				armMap["bindVar"] = arm.BindVar
+			}
+			if arm.Guard != nil {
+				armMap["guard"] = NodeToMap(arm.Guard)
+			}
+			arms[i] = armMap
+		}
+		return m("MatchStmt", n.Span, "subject", NodeToMap(n.Subject), "arms", arms)
 
 	// ---- Declarations ----
 	case *FuncDecl:
@@ -156,10 +176,24 @@ func NodeToMap(node Node) map[string]interface{} {
 			"name", n.Name,
 			"params", n.Params,
 			"body", NodeToMap(n.Body))
+	case *EnumDecl:
+		return m("EnumDecl", n.Span, "name", n.Name, "variants", n.Variants)
+	case *InterfaceDecl:
+		methods := make([]interface{}, len(n.Methods))
+		for i, m := range n.Methods {
+			methods[i] = map[string]interface{}{
+				"name":       m.Name,
+				"paramCount": m.ParamCount,
+			}
+		}
+		return m("InterfaceDecl", n.Span, "name", n.Name, "methods", methods)
 	case *ClassDecl:
 		result := m("ClassDecl", n.Span, "name", n.Name)
 		if n.SuperClass != "" {
 			result["superClass"] = n.SuperClass
+		}
+		if len(n.Implements) > 0 {
+			result["implements"] = n.Implements
 		}
 		if n.Constructor != nil {
 			result["constructor"] = map[string]interface{}{

@@ -1,0 +1,40 @@
+enum State { Idle, Running, Paused, Stopped }
+
+function transition(current, action) {
+    match (current) {
+        case State.Idle => {
+            match (action) {
+                case "start" => return State.Running
+                _ => return current
+            }
+        }
+        case State.Running => {
+            match (action) {
+                case "pause" => return State.Paused
+                case "stop" => return State.Stopped
+                _ => return current
+            }
+        }
+        case State.Paused => {
+            match (action) {
+                case "resume" => return State.Running
+                case "stop" => return State.Stopped
+                _ => return current
+            }
+        }
+        _ => return current
+    }
+    return current
+}
+
+var state = State.Idle
+println(state)
+state = transition(state, "start")
+println(state)
+state = transition(state, "pause")
+println(state)
+state = transition(state, "resume")
+println(state)
+state = transition(state, "stop")
+println(state)
+println("DONE state machine")

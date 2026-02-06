@@ -290,6 +290,23 @@ type ThrowStmt struct {
 	Value Expr
 }
 
+// MatchStmt represents: match (subject) { case pattern => body, ... }.
+type MatchStmt struct {
+	StmtBase
+	Subject Expr
+	Arms    []MatchArm
+}
+
+// MatchArm represents a single arm in a match statement.
+type MatchArm struct {
+	Span      span.Span
+	Patterns  []Expr     // value expressions to compare (nil for default/binding)
+	BindVar   string     // variable binding name (empty if value pattern or default)
+	Guard     Expr       // guard condition for binding arms (nil if no guard)
+	Body      *BlockStmt // arm body
+	IsDefault bool       // true for _ => ...
+}
+
 // ============================================================
 // Declarations (also implement Stmt for top-level use)
 // ============================================================
@@ -306,9 +323,30 @@ type FuncDecl struct {
 type ClassDecl struct {
 	StmtBase
 	Name        string
-	SuperClass  string // may be empty if no extends
+	SuperClass  string   // may be empty if no extends
+	Implements  []string // interface names (may be empty)
 	Constructor *ConstructorDecl // may be nil
 	Methods     []*MethodDecl
+}
+
+// EnumDecl represents an enum declaration: enum Name { Variant1, Variant2, ... }.
+type EnumDecl struct {
+	StmtBase
+	Name     string
+	Variants []string
+}
+
+// InterfaceDecl represents an interface declaration.
+type InterfaceDecl struct {
+	StmtBase
+	Name    string
+	Methods []InterfaceMethodSig
+}
+
+// InterfaceMethodSig represents a method signature in an interface.
+type InterfaceMethodSig struct {
+	Name       string
+	ParamCount int
 }
 
 // ConstructorDecl represents a constructor inside a class.

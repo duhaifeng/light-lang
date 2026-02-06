@@ -1,0 +1,5 @@
+println("START")
+enum LogLevel { Debug, Info, Warn, Error }
+println(LogLevel.Debug)
+println(LogLevel.Error)
+println("END")

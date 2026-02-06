@@ -1,6 +1,6 @@
 # Light Lang
 
-[English](README.md) | 中文
+[English](README.md) | 中文 | [日本語](README_JA.md)
 
 一个使用 Go 从零实现的轻量级动态类型编程语言解释器。
 

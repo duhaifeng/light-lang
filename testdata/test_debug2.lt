@@ -1,0 +1,50 @@
+// Test binding pattern
+function grade(score) {
+    match (score) {
+        case 100 => println("Perfect!")
+        case s if s >= 90 => println(`${s}: A`)
+        case s if s >= 80 => println(`${s}: B`)
+        case s if s >= 70 => println(`${s}: C`)
+        _ => println("F")
+    }
+}
+grade(100)
+grade(95)
+grade(85)
+grade(75)
+grade(60)
+
+println("DONE binding")
+
+// Test block body
+match ("world") {
+    case "world" => {
+        var greeting = "hello"
+        println(`${greeting} world`)
+    }
+    _ => println("not world")
+}
+
+println("DONE block")
+
+// Test no match
+match (999) {
+    case 1 => println("should not print")
+    case 2 => println("should not print")
+}
+
+println("DONE no-match")
+
+// day type
+function dayType(day) {
+    match (day) {
+        case "Mon", "Tue", "Wed", "Thu", "Fri" => println(`${day}: weekday`)
+        case "Sat", "Sun" => println(`${day}: weekend`)
+        _ => println(`${day}: unknown`)
+    }
+}
+dayType("Mon")
+dayType("Sat")
+dayType("Holiday")
+
+println("DONE dayType")

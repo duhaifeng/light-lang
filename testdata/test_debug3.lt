@@ -1,0 +1,34 @@
+interface Printable {
+    toString()
+}
+
+interface Measurable {
+    area()
+    perimeter()
+}
+
+class Circle2 implements Printable, Measurable {
+    constructor(radius) {
+        this.radius = radius
+    }
+
+    toString() {
+        return `Circle(${this.radius})`
+    }
+
+    area() {
+        return 3.14159 * this.radius * this.radius
+    }
+
+    perimeter() {
+        return 2 * 3.14159 * this.radius
+    }
+}
+
+var c = new Circle2(5)
+println(c.toString())
+println(c.area())
+println(c.perimeter())
+println(implements(c, Printable))
+println(implements(c, Measurable))
+println("DONE interface")

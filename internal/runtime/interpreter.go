@@ -117,6 +117,10 @@ func (i *Interpreter) execNode(node ast.Node) (ExecResult, error) {
 		return i.execFuncDecl(n)
 	case *ast.ClassDecl:
 		return i.execClassDecl(n)
+	case *ast.EnumDecl:
+		return i.execEnumDecl(n)
+	case *ast.InterfaceDecl:
+		return i.execInterfaceDecl(n)
 	case ast.Stmt:
 		return i.execStmt(n)
 	default:
@@ -174,6 +178,9 @@ func (i *Interpreter) execStmt(stmt ast.Stmt) (ExecResult, error) {
 
 	case *ast.ThrowStmt:
 		return i.execThrow(s)
+
+	case *ast.MatchStmt:
+		return i.execMatch(s)
 
 	case *ast.BlockStmt:
 		return i.execBlock(s, NewEnvironment(i.env))
@@ -368,7 +375,59 @@ func (i *Interpreter) execClassDecl(s *ast.ClassDecl) (ExecResult, error) {
 		cls.Super = superCls
 	}
 
+	// Check implements
+	for _, ifaceName := range s.Implements {
+		ifaceVal, ok := i.env.Get(ifaceName)
+		if !ok {
+			return resultNone, runtimeErr(s.GetSpan(), "undefined interface '%s'", ifaceName)
+		}
+		iface, ok := ifaceVal.(*InterfaceVal)
+		if !ok {
+			return resultNone, runtimeErr(s.GetSpan(), "'%s' is not an interface", ifaceName)
+		}
+		for _, sig := range iface.Decl.Methods {
+			method, _ := findMethod(cls, sig.Name)
+			if method == nil {
+				return resultNone, runtimeErr(s.GetSpan(),
+					"class '%s' does not implement interface '%s': missing method '%s'",
+					s.Name, ifaceName, sig.Name)
+			}
+			if len(method.Params) != sig.ParamCount {
+				return resultNone, runtimeErr(s.GetSpan(),
+					"class '%s' method '%s' has %d params, interface '%s' requires %d",
+					s.Name, sig.Name, len(method.Params), ifaceName, sig.ParamCount)
+			}
+		}
+	}
+
 	if err := i.env.Define(s.Name, cls, false); err != nil {
+		return resultNone, runtimeErr(s.GetSpan(), "%s", err)
+	}
+	return resultNone, nil
+}
+
+func (i *Interpreter) execEnumDecl(s *ast.EnumDecl) (ExecResult, error) {
+	enumType := &EnumTypeVal{
+		Name:     s.Name,
+		Variants: make(map[string]*EnumVariantVal, len(s.Variants)),
+		Order:    s.Variants,
+	}
+	for idx, name := range s.Variants {
+		enumType.Variants[name] = &EnumVariantVal{
+			EnumName:    s.Name,
+			VariantName: name,
+			Ordinal:     idx,
+		}
+	}
+	if err := i.env.Define(s.Name, enumType, true); err != nil {
+		return resultNone, runtimeErr(s.GetSpan(), "%s", err)
+	}
+	return resultNone, nil
+}
+
+func (i *Interpreter) execInterfaceDecl(s *ast.InterfaceDecl) (ExecResult, error) {
+	iface := &InterfaceVal{Decl: s}
+	if err := i.env.Define(s.Name, iface, true); err != nil {
 		return resultNone, runtimeErr(s.GetSpan(), "%s", err)
 	}
 	return resultNone, nil
@@ -736,6 +795,11 @@ func (i *Interpreter) evalMember(e *ast.MemberExpr) (Value, error) {
 			return IntVal(len(string(o))), nil
 		}
 		return nil, runtimeErr(e.GetSpan(), "string has no property '%s'", e.Property)
+	case *EnumTypeVal:
+		if variant, exists := o.Variants[e.Property]; exists {
+			return variant, nil
+		}
+		return nil, runtimeErr(e.GetSpan(), "enum '%s' has no variant '%s'", o.Name, e.Property)
 	default:
 		return nil, runtimeErr(e.GetSpan(), "cannot access property '%s' on value of type '%s'",
 			e.Property, obj.TypeName())
@@ -1023,6 +1087,54 @@ func (i *Interpreter) execThrow(s *ast.ThrowStmt) (ExecResult, error) {
 		return resultNone, err
 	}
 	return resultNone, &ThrownError{Value: val, Span: s.GetSpan()}
+}
+
+// ============================================================
+// Match execution
+// ============================================================
+
+func (i *Interpreter) execMatch(s *ast.MatchStmt) (ExecResult, error) {
+	subject, err := i.evalExpr(s.Subject)
+	if err != nil {
+		return resultNone, err
+	}
+
+	for _, arm := range s.Arms {
+		if arm.IsDefault {
+			return i.execBlock(arm.Body, NewEnvironment(i.env))
+		}
+
+		if arm.BindVar != "" {
+			// Binding pattern with guard: case x if guard => body
+			bindEnv := NewEnvironment(i.env)
+			bindEnv.Define(arm.BindVar, subject, false)
+
+			prevEnv := i.env
+			i.env = bindEnv
+			guardVal, err := i.evalExpr(arm.Guard)
+			i.env = prevEnv
+			if err != nil {
+				return resultNone, err
+			}
+			if IsTruthy(guardVal) {
+				return i.execBlock(arm.Body, bindEnv)
+			}
+			continue
+		}
+
+		// Value patterns: compare subject to each pattern
+		for _, pattern := range arm.Patterns {
+			patVal, err := i.evalExpr(pattern)
+			if err != nil {
+				return resultNone, err
+			}
+			if valuesEqual(subject, patVal) {
+				return i.execBlock(arm.Body, NewEnvironment(i.env))
+			}
+		}
+	}
+
+	return resultNone, nil
 }
 
 func (i *Interpreter) callSuperConstructor(args []Value, s span.Span) (Value, error) {
@@ -1628,6 +1740,10 @@ func valuesEqual(a, b Value) bool {
 	case NullVal:
 		_, ok := b.(NullVal)
 		return ok
+	case *EnumVariantVal:
+		if bv, ok := b.(*EnumVariantVal); ok {
+			return av.EnumName == bv.EnumName && av.VariantName == bv.VariantName
+		}
 	}
 	// Reference equality for objects/functions
 	return a == b

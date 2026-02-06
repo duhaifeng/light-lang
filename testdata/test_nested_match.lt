@@ -1,0 +1,19 @@
+enum State { Idle, Running }
+
+function transition(current, action) {
+    match (current) {
+        case State.Idle => {
+            match (action) {
+                case "start" => return State.Running
+                _ => return current
+            }
+        }
+        _ => return current
+    }
+    return current
+}
+
+var s = State.Idle
+println(s)
+s = transition(s, "start")
+println(s)

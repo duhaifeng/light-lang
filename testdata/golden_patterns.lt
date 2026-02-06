@@ -1,0 +1,342 @@
+// ============================================================
+// Golden test: Match pattern matching + Enum + Interface
+// ============================================================
+
+// ============================================================
+// Part 1: Enum
+// ============================================================
+println("=== Enum ===")
+
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+
+// Enum access
+println(Color.Red)
+println(Color.Green)
+println(Color.Blue)
+println(Direction.North)
+println(Direction.West)
+
+// Enum comparison
+println(Color.Red == Color.Red)
+println(Color.Red == Color.Blue)
+println(Color.Red == Direction.North)
+
+// Enum in variables
+var myColor = Color.Green
+println(myColor)
+println(myColor == Color.Green)
+println(myColor == Color.Red)
+
+// typeOf
+println(typeOf(Color.Red))
+println(typeOf(Direction.South))
+
+// ============================================================
+// Part 2: Match statement
+// ============================================================
+println("")
+println("=== Match ===")
+
+// Basic value matching
+match (1) {
+    case 1 => println("one")
+    case 2 => println("two")
+    _ => println("other")
+}
+
+// Multiple patterns
+match (3) {
+    case 1, 2 => println("one or two")
+    case 3, 4 => println("three or four")
+    _ => println("other")
+}
+
+// Match with string
+match ("hello") {
+    case "hi" => println("hi")
+    case "hello" => println("hello!")
+    _ => println("unknown greeting")
+}
+
+// Match with boolean
+match (true) {
+    case true => println("it's true")
+    case false => println("it's false")
+}
+
+// Match with enum
+match (Color.Red) {
+    case Color.Red => println("red")
+    case Color.Green => println("green")
+    case Color.Blue => println("blue")
+}
+
+match (Color.Blue) {
+    case Color.Red => println("red")
+    case Color.Green => println("green")
+    case Color.Blue => println("blue")
+}
+
+// Match with variable
+var x = 42
+match (x) {
+    case 1 => println("one")
+    case 42 => println("forty-two")
+    _ => println("other")
+}
+
+// Match with binding and guard
+function grade(score) {
+    match (score) {
+        case 100 => println("Perfect!")
+        case s if s >= 90 => println(`${s}: A`)
+        case s if s >= 80 => println(`${s}: B`)
+        case s if s >= 70 => println(`${s}: C`)
+        _ => println("F")
+    }
+}
+grade(100)
+grade(95)
+grade(85)
+grade(75)
+grade(60)
+
+// Match with block body
+match ("world") {
+    case "world" => {
+        var greeting = "hello"
+        println(`${greeting} world`)
+    }
+    _ => println("not world")
+}
+
+// Match with no matching arm (should do nothing)
+match (999) {
+    case 1 => println("should not print")
+    case 2 => println("should not print")
+}
+
+// Match day type
+function dayType(day) {
+    match (day) {
+        case "Mon", "Tue", "Wed", "Thu", "Fri" => println(`${day}: weekday`)
+        case "Sat", "Sun" => println(`${day}: weekend`)
+        _ => println(`${day}: unknown`)
+    }
+}
+dayType("Mon")
+dayType("Wed")
+dayType("Sat")
+dayType("Sun")
+dayType("Holiday")
+
+// Match enum with action
+enum Shape { Circle, Square, Triangle }
+
+function describeShape(s) {
+    match (s) {
+        case Shape.Circle => println("A round shape")
+        case Shape.Square => println("A four-sided shape")
+        case Shape.Triangle => println("A three-sided shape")
+    }
+}
+describeShape(Shape.Circle)
+describeShape(Shape.Square)
+describeShape(Shape.Triangle)
+
+// Match with computed values
+var threshold = 10
+match (15) {
+    case threshold => println("equals threshold")
+    case n if n > threshold => println(`${n} exceeds threshold`)
+    _ => println("below threshold")
+}
+
+// ============================================================
+// Part 3: Interface
+// ============================================================
+println("")
+println("=== Interface ===")
+
+interface Printable {
+    toString()
+}
+
+interface Measurable {
+    area()
+    perimeter()
+}
+
+interface Describable {
+    describe()
+}
+
+class Circle2 implements Printable, Measurable {
+    constructor(radius) {
+        this.radius = radius
+    }
+
+    toString() {
+        return `Circle(${this.radius})`
+    }
+
+    area() {
+        return 3.14159 * this.radius * this.radius
+    }
+
+    perimeter() {
+        return 2 * 3.14159 * this.radius
+    }
+}
+
+class Rectangle implements Printable, Measurable, Describable {
+    constructor(w, h) {
+        this.w = w
+        this.h = h
+    }
+
+    toString() {
+        return `Rectangle(${this.w}x${this.h})`
+    }
+
+    area() {
+        return this.w * this.h
+    }
+
+    perimeter() {
+        return 2 * (this.w + this.h)
+    }
+
+    describe() {
+        return `A ${this.w}x${this.h} rectangle with area ${this.area()}`
+    }
+}
+
+var c = new Circle2(5)
+println(c.toString())
+println(c.area())
+println(c.perimeter())
+
+var r = new Rectangle(4, 3)
+println(r.toString())
+println(r.area())
+println(r.perimeter())
+println(r.describe())
+
+// implements() builtin
+println(implements(c, Printable))
+println(implements(c, Measurable))
+println(implements(c, Describable))
+println(implements(r, Printable))
+println(implements(r, Describable))
+println(implements("hello", Printable))
+
+// ============================================================
+// Part 4: Integration — Enum + Match + Interface
+// ============================================================
+println("")
+println("=== Integration ===")
+
+enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error
+}
+
+interface Loggable {
+    getLevel()
+    getMessage()
+}
+
+class LogEntry implements Loggable {
+    constructor(level, message) {
+        this.level = level
+        this.message = message
+    }
+
+    getLevel() {
+        return this.level
+    }
+
+    getMessage() {
+        return this.message
+    }
+}
+
+function formatLog(entry) {
+    var prefix = ""
+    match (entry.getLevel()) {
+        case LogLevel.Debug => prefix = "[DEBUG]"
+        case LogLevel.Info => prefix = "[INFO]"
+        case LogLevel.Warn => prefix = "[WARN]"
+        case LogLevel.Error => prefix = "[ERROR]"
+    }
+    return `${prefix} ${entry.getMessage()}`
+}
+
+var logs = [
+    new LogEntry(LogLevel.Info, "Application started"),
+    new LogEntry(LogLevel.Debug, "Loading config"),
+    new LogEntry(LogLevel.Warn, "Disk space low"),
+    new LogEntry(LogLevel.Error, "Connection failed")
+]
+
+for (var log of logs) {
+    println(formatLog(log))
+}
+
+// Verify interface checking
+println(implements(logs[0], Loggable))
+
+// State machine with enum + match
+enum State { Idle, Running, Paused, Stopped }
+
+function transition(current, action) {
+    match (current) {
+        case State.Idle => {
+            match (action) {
+                case "start" => return State.Running
+                _ => return current
+            }
+        }
+        case State.Running => {
+            match (action) {
+                case "pause" => return State.Paused
+                case "stop" => return State.Stopped
+                _ => return current
+            }
+        }
+        case State.Paused => {
+            match (action) {
+                case "resume" => return State.Running
+                case "stop" => return State.Stopped
+                _ => return current
+            }
+        }
+        _ => return current
+    }
+    return current
+}
+
+var state = State.Idle
+println(state)
+state = transition(state, "start")
+println(state)
+state = transition(state, "pause")
+println(state)
+state = transition(state, "resume")
+println(state)
+state = transition(state, "stop")
+println(state)

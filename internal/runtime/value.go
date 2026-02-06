@@ -135,6 +135,38 @@ func (v *MapVal) String() string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
+// ---- Enum values ----
+
+// EnumTypeVal represents an enum type (e.g., Color).
+type EnumTypeVal struct {
+	Name     string
+	Variants map[string]*EnumVariantVal
+	Order    []string // ordered variant names
+}
+
+func (v *EnumTypeVal) TypeName() string { return "enum" }
+func (v *EnumTypeVal) String() string   { return fmt.Sprintf("<enum %s>", v.Name) }
+
+// EnumVariantVal represents a specific enum variant (e.g., Color.Red).
+type EnumVariantVal struct {
+	EnumName    string
+	VariantName string
+	Ordinal     int
+}
+
+func (v *EnumVariantVal) TypeName() string { return v.EnumName }
+func (v *EnumVariantVal) String() string   { return v.EnumName + "." + v.VariantName }
+
+// ---- Interface value ----
+
+// InterfaceVal represents an interface definition stored in the environment.
+type InterfaceVal struct {
+	Decl *ast.InterfaceDecl
+}
+
+func (v *InterfaceVal) TypeName() string { return "interface" }
+func (v *InterfaceVal) String() string   { return fmt.Sprintf("<interface %s>", v.Decl.Name) }
+
 // ---- Truthiness ----
 
 // IsTruthy returns the truthiness of a value (JS/Python style).

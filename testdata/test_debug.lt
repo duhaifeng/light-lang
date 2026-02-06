@@ -1,0 +1,69 @@
+println("=== Enum ===")
+
+enum Color { Red, Green, Blue }
+enum Direction { North, South, East, West }
+
+println(Color.Red)
+println(Color.Green)
+println(Color.Blue)
+println(Direction.North)
+println(Direction.West)
+
+println(Color.Red == Color.Red)
+println(Color.Red == Color.Blue)
+println(Color.Red == Direction.North)
+
+var myColor = Color.Green
+println(myColor)
+println(myColor == Color.Green)
+println(myColor == Color.Red)
+
+println(typeOf(Color.Red))
+println(typeOf(Direction.South))
+
+println("")
+println("=== Match ===")
+
+match (1) {
+    case 1 => println("one")
+    case 2 => println("two")
+    _ => println("other")
+}
+
+match (3) {
+    case 1, 2 => println("one or two")
+    case 3, 4 => println("three or four")
+    _ => println("other")
+}
+
+match ("hello") {
+    case "hi" => println("hi")
+    case "hello" => println("hello!")
+    _ => println("unknown greeting")
+}
+
+match (true) {
+    case true => println("it's true")
+    case false => println("it's false")
+}
+
+match (Color.Red) {
+    case Color.Red => println("red")
+    case Color.Green => println("green")
+    case Color.Blue => println("blue")
+}
+
+match (Color.Blue) {
+    case Color.Red => println("red")
+    case Color.Green => println("green")
+    case Color.Blue => println("blue")
+}
+
+var x = 42
+match (x) {
+    case 1 => println("one")
+    case 42 => println("forty-two")
+    _ => println("other")
+}
+
+println("DONE basic match")

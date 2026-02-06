@@ -171,7 +171,7 @@ func (p *Parser) synchronize() {
 		// Stop at statement-starting keywords
 		if p.match(token.KW_IF, token.KW_WHILE, token.KW_FOR, token.KW_FUNCTION, token.KW_CLASS,
 			token.KW_VAR, token.KW_CONST, token.KW_RETURN, token.KW_BREAK, token.KW_CONTINUE,
-			token.KW_TRY, token.KW_THROW) {
+			token.KW_TRY, token.KW_THROW, token.KW_MATCH, token.KW_ENUM, token.KW_INTERFACE) {
 			return
 		}
 		p.advance()
@@ -188,6 +188,10 @@ func (p *Parser) parseTopLevel() ast.Node {
 		return p.parseFuncDecl()
 	case token.KW_CLASS:
 		return p.parseClassDecl()
+	case token.KW_ENUM:
+		return p.parseEnumDecl()
+	case token.KW_INTERFACE:
+		return p.parseInterfaceDecl()
 	default:
 		return p.parseStmt()
 	}
@@ -217,6 +221,8 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return p.parseTryStmt()
 	case token.KW_THROW:
 		return p.parseThrowStmt()
+	case token.KW_MATCH:
+		return p.parseMatchStmt()
 	case token.LBRACE:
 		return p.parseBlock()
 	default:
@@ -447,6 +453,23 @@ func (p *Parser) parseClassDecl() *ast.ClassDecl {
 		superTok, ok := p.expect(token.IDENT)
 		if ok {
 			decl.SuperClass = superTok.Lexeme
+		}
+	}
+
+	// Optional: implements Interface1, Interface2, ...
+	if p.check(token.IDENT) && p.peek().Lexeme == "implements" {
+		p.advance() // consume 'implements'
+		ifaceTok, ok := p.expect(token.IDENT)
+		if ok {
+			decl.Implements = append(decl.Implements, ifaceTok.Lexeme)
+		}
+		for p.check(token.COMMA) {
+			p.advance()
+			p.skipNewlines()
+			ifaceTok, ok = p.expect(token.IDENT)
+			if ok {
+				decl.Implements = append(decl.Implements, ifaceTok.Lexeme)
+			}
 		}
 	}
 
@@ -1142,6 +1165,211 @@ func (p *Parser) parseThrowStmt() *ast.ThrowStmt {
 		StmtBase: makeStmtBase(start.Span.Start, p.prevEnd()),
 		Value:    expr,
 	}
+}
+
+// ============================================================
+// Match statement parsing
+// ============================================================
+
+// parseMatchStmt parses: match (subject) { arms... }
+func (p *Parser) parseMatchStmt() *ast.MatchStmt {
+	start := p.advance() // consume 'match'
+	stmt := &ast.MatchStmt{}
+
+	if _, ok := p.expect(token.LPAREN); !ok {
+		p.synchronize()
+		stmt.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return stmt
+	}
+	stmt.Subject = p.parseExpr(bpNone)
+	p.expect(token.RPAREN)
+
+	if _, ok := p.expect(token.LBRACE); !ok {
+		p.synchronize()
+		stmt.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return stmt
+	}
+
+	p.skipSep()
+	for !p.check(token.RBRACE) && !p.isAtEnd() {
+		arm := p.parseMatchArm()
+		stmt.Arms = append(stmt.Arms, arm)
+		p.skipSep()
+	}
+	p.expect(token.RBRACE)
+
+	stmt.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+	return stmt
+}
+
+// parseMatchArm parses a single match arm.
+func (p *Parser) parseMatchArm() ast.MatchArm {
+	arm := ast.MatchArm{}
+	start := p.peek().Span.Start
+
+	if p.check(token.IDENT) && p.peek().Lexeme == "_" {
+		// Default arm: _ => body
+		p.advance()
+		arm.IsDefault = true
+	} else {
+		if _, ok := p.expect(token.KW_CASE); !ok {
+			p.synchronize()
+			arm.Span = p.makeSpan(start)
+			return arm
+		}
+		p.skipNewlines()
+
+		// Check for binding pattern: case IDENT if GUARD => body
+		if p.isBindingPattern() {
+			arm.BindVar = p.advance().Lexeme // consume identifier
+			p.advance()                      // consume 'if'
+			p.skipNewlines()
+			arm.Guard = p.parseExpr(bpNone)
+		} else {
+			// Value patterns: case expr1, expr2, ... => body
+			arm.Patterns = append(arm.Patterns, p.parseExpr(bpNone))
+			for p.check(token.COMMA) {
+				p.advance()
+				p.skipNewlines()
+				arm.Patterns = append(arm.Patterns, p.parseExpr(bpNone))
+			}
+		}
+	}
+
+	p.skipNewlines()
+	p.expect(token.ARROW) // =>
+	p.skipNewlines()
+
+	// Parse body: block or single statement
+	if p.check(token.LBRACE) {
+		arm.Body = p.parseBlock()
+	} else {
+		stmt := p.parseStmt()
+		arm.Body = &ast.BlockStmt{
+			StmtBase: makeStmtBase(stmt.GetSpan().Start, stmt.GetSpan().End),
+			Stmts:    []ast.Node{stmt},
+		}
+	}
+
+	arm.Span = p.makeSpan(start)
+	return arm
+}
+
+// isBindingPattern checks if the current position is a binding pattern: IDENT if ...
+func (p *Parser) isBindingPattern() bool {
+	if !p.check(token.IDENT) {
+		return false
+	}
+	// Look ahead past newlines for 'if'
+	nextPos := p.pos + 1
+	for nextPos < len(p.tokens) && p.tokens[nextPos].Kind == token.NEWLINE {
+		nextPos++
+	}
+	return nextPos < len(p.tokens) && p.tokens[nextPos].Kind == token.KW_IF
+}
+
+// ============================================================
+// Enum declaration parsing
+// ============================================================
+
+// parseEnumDecl parses: enum Name { Variant1, Variant2, ... }
+func (p *Parser) parseEnumDecl() *ast.EnumDecl {
+	start := p.advance() // consume 'enum'
+	decl := &ast.EnumDecl{}
+
+	nameTok, ok := p.expect(token.IDENT)
+	if !ok {
+		p.synchronize()
+		decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return decl
+	}
+	decl.Name = nameTok.Lexeme
+
+	if _, ok := p.expect(token.LBRACE); !ok {
+		p.synchronize()
+		decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return decl
+	}
+
+	p.skipSep()
+	if !p.check(token.RBRACE) {
+		variantTok, ok := p.expect(token.IDENT)
+		if ok {
+			decl.Variants = append(decl.Variants, variantTok.Lexeme)
+		}
+		for p.check(token.COMMA) {
+			p.advance()
+			p.skipSep()
+			if p.check(token.RBRACE) {
+				break // trailing comma
+			}
+			variantTok, ok = p.expect(token.IDENT)
+			if ok {
+				decl.Variants = append(decl.Variants, variantTok.Lexeme)
+			}
+		}
+	}
+	p.skipSep()
+	p.expect(token.RBRACE)
+
+	decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+	return decl
+}
+
+// ============================================================
+// Interface declaration parsing
+// ============================================================
+
+// parseInterfaceDecl parses: interface Name { method1(params), method2(params), ... }
+func (p *Parser) parseInterfaceDecl() *ast.InterfaceDecl {
+	start := p.advance() // consume 'interface'
+	decl := &ast.InterfaceDecl{}
+
+	nameTok, ok := p.expect(token.IDENT)
+	if !ok {
+		p.synchronize()
+		decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return decl
+	}
+	decl.Name = nameTok.Lexeme
+
+	if _, ok := p.expect(token.LBRACE); !ok {
+		p.synchronize()
+		decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+		return decl
+	}
+
+	p.skipSep()
+	for !p.check(token.RBRACE) && !p.isAtEnd() {
+		methodTok, ok := p.expect(token.IDENT)
+		if !ok {
+			p.synchronize()
+			continue
+		}
+		sig := ast.InterfaceMethodSig{Name: methodTok.Lexeme}
+
+		// Parse parameter list to count params
+		if _, ok := p.expect(token.LPAREN); ok {
+			if !p.check(token.RPAREN) {
+				p.expect(token.IDENT) // first param name
+				sig.ParamCount = 1
+				for p.check(token.COMMA) {
+					p.advance()
+					p.skipNewlines()
+					p.expect(token.IDENT) // next param name
+					sig.ParamCount++
+				}
+			}
+			p.expect(token.RPAREN)
+		}
+
+		decl.Methods = append(decl.Methods, sig)
+		p.skipSep()
+	}
+	p.expect(token.RBRACE)
+
+	decl.StmtBase = makeStmtBase(start.Span.Start, p.prevEnd())
+	return decl
 }
 
 // compoundToOp maps compound assignment token to binary operator.

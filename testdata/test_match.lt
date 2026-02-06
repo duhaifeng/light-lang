@@ -1,0 +1,5 @@
+match (1) {
+    case 1 => println("one")
+    case 2 => println("two")
+    _ => println("other")
+}

@@ -92,6 +92,10 @@ const (
 	KW_EXTENDS
 	KW_SUPER
 	KW_OF
+	KW_MATCH
+	KW_CASE
+	KW_ENUM
+	KW_INTERFACE
 )
 
 var kindNames = map[Kind]string{
@@ -164,6 +168,10 @@ var kindNames = map[Kind]string{
 	KW_EXTENDS:     "extends",
 	KW_SUPER:       "super",
 	KW_OF:          "of",
+	KW_MATCH:       "match",
+	KW_CASE:        "case",
+	KW_ENUM:        "enum",
+	KW_INTERFACE:   "interface",
 }
 
 // String returns the human-readable name for a token kind.
@@ -176,7 +184,7 @@ func (k Kind) String() string {
 
 // IsKeyword returns true if the kind is a keyword.
 func (k Kind) IsKeyword() bool {
-	return k >= KW_IF && k <= KW_OF
+	return k >= KW_IF && k <= KW_INTERFACE
 }
 
 // IsLiteral returns true if the kind is a literal (ident/int/float/string).
@@ -208,6 +216,10 @@ var keywords = map[string]Kind{
 	"extends":     KW_EXTENDS,
 	"super":       KW_SUPER,
 	"of":          KW_OF,
+	"match":       KW_MATCH,
+	"case":        KW_CASE,
+	"enum":        KW_ENUM,
+	"interface":   KW_INTERFACE,
 }
 
 // LookupIdent returns the keyword Kind for ident, or IDENT if it is not a keyword.

@@ -1,0 +1,128 @@
+println("CHECKPOINT 1")
+
+enum Color { Red, Green, Blue }
+enum Direction { North, South, East, West }
+println(Color.Red)
+println(Direction.West)
+println(Color.Red == Color.Red)
+
+println("CHECKPOINT 2")
+
+match (1) {
+    case 1 => println("one")
+    _ => println("other")
+}
+
+match (Color.Blue) {
+    case Color.Red => println("red")
+    case Color.Blue => println("blue")
+}
+
+println("CHECKPOINT 3")
+
+function grade(score) {
+    match (score) {
+        case 100 => println("Perfect!")
+        case s if s >= 90 => println(`${s}: A`)
+        _ => println("F")
+    }
+}
+grade(100)
+grade(95)
+grade(60)
+
+println("CHECKPOINT 4")
+
+enum Shape { Circle, Square, Triangle }
+function describeShape(s) {
+    match (s) {
+        case Shape.Circle => println("round")
+        case Shape.Square => println("square")
+        case Shape.Triangle => println("triangle")
+    }
+}
+describeShape(Shape.Circle)
+describeShape(Shape.Square)
+
+println("CHECKPOINT 5")
+
+var threshold = 10
+match (15) {
+    case threshold => println("equals threshold")
+    case n if n > threshold => println(`${n} exceeds threshold`)
+    _ => println("below threshold")
+}
+
+println("CHECKPOINT 6")
+
+interface Printable {
+    toString()
+}
+
+interface Measurable {
+    area()
+    perimeter()
+}
+
+interface Describable {
+    describe()
+}
+
+println("CHECKPOINT 7")
+
+class Circle2 implements Printable, Measurable {
+    constructor(radius) {
+        this.radius = radius
+    }
+    toString() {
+        return `Circle(${this.radius})`
+    }
+    area() {
+        return 3.14159 * this.radius * this.radius
+    }
+    perimeter() {
+        return 2 * 3.14159 * this.radius
+    }
+}
+
+println("CHECKPOINT 8")
+
+class Rectangle implements Printable, Measurable, Describable {
+    constructor(w, h) {
+        this.w = w
+        this.h = h
+    }
+    toString() {
+        return `Rectangle(${this.w}x${this.h})`
+    }
+    area() {
+        return this.w * this.h
+    }
+    perimeter() {
+        return 2 * (this.w + this.h)
+    }
+    describe() {
+        return `A ${this.w}x${this.h} rectangle`
+    }
+}
+
+println("CHECKPOINT 9")
+
+var c = new Circle2(5)
+println(c.toString())
+var r = new Rectangle(4, 3)
+println(r.toString())
+
+println("CHECKPOINT 10")
+
+println(implements(c, Printable))
+println(implements(c, Measurable))
+println(implements(c, Describable))
+println(implements(r, Describable))
+println(implements("hello", Printable))
+
+println("CHECKPOINT 11")
+
+enum LogLevel { Debug, Info, Warn, Error }
+
+println("CHECKPOINT 12")
